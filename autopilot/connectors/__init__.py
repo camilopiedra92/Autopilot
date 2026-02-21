@@ -19,8 +19,14 @@ from autopilot.connectors.gmail_connector import GmailConnector
 from autopilot.connectors.ynab_connector import YNABConnector, AsyncYNABClient
 from autopilot.connectors.pubsub_connector import PubSubConnector
 from autopilot.connectors.todoist_connector import TodoistConnector, AsyncTodoistClient
-from autopilot.connectors.airtable_connector import AirtableConnector, AsyncAirtableClient
-from autopilot.connectors.telegram_connector import TelegramConnector, AsyncTelegramClient
+from autopilot.connectors.airtable_connector import (
+    AirtableConnector,
+    AsyncAirtableClient,
+)
+from autopilot.connectors.telegram_connector import (
+    TelegramConnector,
+    AsyncTelegramClient,
+)
 
 __all__ = [
     "BaseConnector",

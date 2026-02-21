@@ -1,6 +1,9 @@
 import typing
 
-class MyType: pass
+
+class MyType:
+    pass
+
 
 # PEP 604 Union
 u = MyType | None
@@ -19,4 +22,3 @@ print("origin:", getattr(o, "__origin__", None))
 print("args:", getattr(o, "__args__", []))
 print("typing get_origin:", typing.get_origin(o))
 print("typing get_args:", typing.get_args(o))
-

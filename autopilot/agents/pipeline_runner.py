@@ -34,7 +34,11 @@ from autopilot.agents.json_utils import extract_json
 from autopilot.errors import PipelineEmptyResponseError
 from autopilot.models import PipelineResult
 from autopilot.utils.resilience import retry_with_backoff
-from google.api_core.exceptions import ServiceUnavailable, ResourceExhausted, DeadlineExceeded
+from google.api_core.exceptions import (
+    ServiceUnavailable,
+    ResourceExhausted,
+    DeadlineExceeded,
+)
 from autopilot.errors import LLMRateLimitError, ConnectorError, ToolExecutionError
 from autopilot.services.event_bus import get_event_bus
 
@@ -54,14 +58,14 @@ class PipelineRunner:
         max_delay=15.0,
         backoff_factor=2.0,
         retryable_exceptions=(
-            ServiceUnavailable,    # 503 from Google AI
-            ResourceExhausted,     # 429 Quota Exceeded / Rate Limit
-            DeadlineExceeded,      # 504 Gateway Timeout
-            LLMRateLimitError,     # Custom wrapper for rate limits
-            ConnectorError,        # Transient connector errors (5xx, 429)
-            ToolExecutionError,    # Tool failures may be transient
-            ConnectionError,       # Network blips
-            TimeoutError,          # Asyncio timeouts
+            ServiceUnavailable,  # 503 from Google AI
+            ResourceExhausted,  # 429 Quota Exceeded / Rate Limit
+            DeadlineExceeded,  # 504 Gateway Timeout
+            LLMRateLimitError,  # Custom wrapper for rate limits
+            ConnectorError,  # Transient connector errors (5xx, 429)
+            ToolExecutionError,  # Tool failures may be transient
+            ConnectionError,  # Network blips
+            TimeoutError,  # Asyncio timeouts
         ),
     )
     async def run(
@@ -88,7 +92,9 @@ class PipelineRunner:
         get_event_bus()
         effective_stream_id = stream_session_id or session_id
 
-        return await self._run_adk_agent(pipeline, message, initial_state, effective_stream_id)
+        return await self._run_adk_agent(
+            pipeline, message, initial_state, effective_stream_id
+        )
 
     async def _run_adk_agent(
         self,
@@ -103,12 +109,12 @@ class PipelineRunner:
             attributes={
                 "app_name": self._app_name,
                 "pipeline_name": getattr(pipeline, "name", "unknown"),
-            }
+            },
         ) as span:
             session_id = f"pipeline_{uuid4().hex[:12]}"
             span.set_attribute("session_id", session_id)
             event_bus = get_event_bus()
-        
+
         # Set the event bus session context so callbacks can stream events
         token = pipeline_session_id.set(effective_stream_id)
 
@@ -145,11 +151,14 @@ class PipelineRunner:
             )
 
             # Emit pipeline_started event
-            await event_bus.emit(effective_stream_id, {
-                "type": "pipeline_started",
-                "session_id": session_id,
-                "pipeline_name": getattr(pipeline, "name", "unknown"),
-            })
+            await event_bus.emit(
+                effective_stream_id,
+                {
+                    "type": "pipeline_started",
+                    "session_id": session_id,
+                    "pipeline_name": getattr(pipeline, "name", "unknown"),
+                },
+            )
 
             span.add_event("pipeline_started")
 
@@ -166,13 +175,14 @@ class PipelineRunner:
                         text_parts = [p.text for p in event.content.parts if p.text]
                         if text_parts:
                             final_text = "\n".join(text_parts)
-                        
+
                         # Extract function call parts (Native Output Schema)
                         if not final_text:
                             for p in event.content.parts:
                                 if p.function_call and p.function_call.args:
                                     try:
                                         import json
+
                                         # Use the function call args as the "response text" (JSON)
                                         # This ensures we don't trigger PipelineEmptyResponseError
                                         # and parsed_json below will work naturally.
@@ -180,15 +190,21 @@ class PipelineRunner:
                                         final_text = json.dumps(fc_data)
                                         break
                                     except Exception as e:
-                                        logger.warning("failed_to_serialize_func_call", error=str(e))
+                                        logger.warning(
+                                            "failed_to_serialize_func_call",
+                                            error=str(e),
+                                        )
 
             elapsed_ms = round((time.monotonic() - start) * 1000, 2)
 
             if not final_text:
-                await event_bus.emit(effective_stream_id, {
-                    "type": "pipeline_error",
-                    "error": "Pipeline returned no final response.",
-                })
+                await event_bus.emit(
+                    effective_stream_id,
+                    {
+                        "type": "pipeline_error",
+                        "error": "Pipeline returned no final response.",
+                    },
+                )
                 raise PipelineEmptyResponseError(
                     "Pipeline returned no final response.",
                     detail=f"pipeline={getattr(pipeline, 'name', 'unknown')}, session={session_id}",
@@ -206,7 +222,9 @@ class PipelineRunner:
                 user_id=self._user_id,
                 session_id=session_id,
             )
-            final_state = dict(session.state) if session and hasattr(session, "state") else {}
+            final_state = (
+                dict(session.state) if session and hasattr(session, "state") else {}
+            )
 
             logger.info(
                 "pipeline_completed",
@@ -219,11 +237,14 @@ class PipelineRunner:
             )
 
             # Emit pipeline_completed event
-            await event_bus.emit(effective_stream_id, {
-                "type": "pipeline_completed",
-                "session_id": session_id,
-                "duration_ms": elapsed_ms,
-            })
+            await event_bus.emit(
+                effective_stream_id,
+                {
+                    "type": "pipeline_completed",
+                    "session_id": session_id,
+                    "duration_ms": elapsed_ms,
+                },
+            )
 
             return PipelineResult(
                 session_id=session_id,
@@ -236,10 +257,13 @@ class PipelineRunner:
         except Exception as e:
             span.record_exception(e)
             span.set_status(trace.StatusCode.ERROR, str(e))
-            await event_bus.emit(effective_stream_id, {
-                "type": "pipeline_error",
-                "error": str(e),
-            })
+            await event_bus.emit(
+                effective_stream_id,
+                {
+                    "type": "pipeline_error",
+                    "error": str(e),
+                },
+            )
             raise
 
         finally:

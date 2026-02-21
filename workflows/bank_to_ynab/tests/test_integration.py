@@ -37,6 +37,7 @@ import pytest
 
 # Load .env for real keys (conftest.py also does this, but be explicit)
 from dotenv import load_dotenv
+
 load_dotenv()
 
 # Detect available credentials
@@ -64,6 +65,7 @@ class TestYNABClientIntegration:
 
     async def _get_connector(self):
         from autopilot.connectors.ynab_connector import YNABConnector
+
         connector = YNABConnector()
         return connector
 
@@ -71,6 +73,7 @@ class TestYNABClientIntegration:
     async def test_fetch_budgets(self):
         """Should successfully fetch budgets from YNAB API."""
         from autopilot.connectors.ynab_connector import YNABConnector
+
         connector = YNABConnector()
         await connector.setup()
         budgets = await connector.client.get_all_budgets()
@@ -83,6 +86,7 @@ class TestYNABClientIntegration:
     async def test_fetch_accounts(self):
         """Should fetch accounts for a given budget."""
         from autopilot.connectors.ynab_connector import YNABConnector
+
         connector = YNABConnector()
         await connector.setup()
         budgets = await connector.client.get_all_budgets()
@@ -100,6 +104,7 @@ class TestYNABClientIntegration:
     async def test_fetch_categories(self):
         """Should fetch categories for a given budget."""
         from autopilot.connectors.ynab_connector import YNABConnector
+
         connector = YNABConnector()
         await connector.setup()
         budgets = await connector.client.get_all_budgets()
@@ -129,7 +134,7 @@ class TestYNABClientIntegration:
         """The formatted accounts string should be parseable by LLMs."""
         connector = await self._get_connector()
         await connector.setup()
-        
+
         result = await connector.client.get_all_accounts_string()
         assert isinstance(result, str)
         assert len(result) > 50, "Accounts string seems too short"
@@ -144,7 +149,7 @@ class TestYNABClientIntegration:
         """The formatted categories string should be parseable by LLMs."""
         connector = await self._get_connector()
         await connector.setup()
-        
+
         budgets = await connector.client.get_all_budgets()
 
         # Find a budget with categories
@@ -170,7 +175,7 @@ class TestYNABClientIntegration:
         """Second fetch should use cache (no API call)."""
         connector = await self._get_connector()
         await connector.setup()
-        
+
         budgets = await connector.client.get_all_budgets()
         if not budgets:
             pytest.skip()
@@ -209,7 +214,9 @@ async def _run_parser_on_text(email_text: str) -> dict:
 
     session_id = f"parse_{id(email_text)}"
     await session_service.create_session(
-        app_name="parser_integration", user_id="test", session_id=session_id,
+        app_name="parser_integration",
+        user_id="test",
+        session_id=session_id,
     )
 
     message = types.Content(
@@ -219,7 +226,9 @@ async def _run_parser_on_text(email_text: str) -> dict:
 
     final_text = ""
     async for event in runner.run_async(
-        user_id="test", session_id=session_id, new_message=message,
+        user_id="test",
+        session_id=session_id,
+        new_message=message,
     ):
         if event.is_final_response():
             if event.content and event.content.parts:
@@ -269,24 +278,28 @@ class TestEmailParserIntegration:
             assert "amount" in parsed, f"[{case['name']}] Missing 'amount'"
 
             # Validate date format
-            assert re.match(
-                r"^\d{4}-\d{2}-\d{2}$", str(parsed["date"])
-            ), f"[{case['name']}] Bad date: {parsed['date']}"
+            assert re.match(r"^\d{4}-\d{2}-\d{2}$", str(parsed["date"])), (
+                f"[{case['name']}] Bad date: {parsed['date']}"
+            )
 
             # Validate amount sign
             if "amount_is_negative" in expected:
                 amount = parsed["amount"]
                 if isinstance(amount, (int, float)):
                     if expected["amount_is_negative"]:
-                        assert amount < 0, f"[{case['name']}] Expected negative, got {amount}"
+                        assert amount < 0, (
+                            f"[{case['name']}] Expected negative, got {amount}"
+                        )
                     else:
-                        assert amount > 0, f"[{case['name']}] Expected positive, got {amount}"
+                        assert amount > 0, (
+                            f"[{case['name']}] Expected positive, got {amount}"
+                        )
 
             # Validate payee
             if "payee_contains" in expected:
-                assert (
-                    expected["payee_contains"].lower() in parsed["payee"].lower()
-                ), f"[{case['name']}] Payee '{parsed['payee']}' \u2260 expected '{expected['payee_contains']}'"
+                assert expected["payee_contains"].lower() in parsed["payee"].lower(), (
+                    f"[{case['name']}] Payee '{parsed['payee']}' \u2260 expected '{expected['payee_contains']}'"
+                )
 
         # At least 1 golden email should parse successfully
         assert successes >= 1, (
@@ -310,7 +323,9 @@ class TestEmailParserIntegration:
 
         assert len(results) >= 2, f"Only {len(results)}/3 runs produced valid JSON"
 
-        amounts = [r["amount"] for r in results if isinstance(r.get("amount"), (int, float))]
+        amounts = [
+            r["amount"] for r in results if isinstance(r.get("amount"), (int, float))
+        ]
         if len(amounts) >= 2:
             signs = [a < 0 for a in amounts]
             assert all(s == signs[0] for s in signs), f"Inconsistent signs: {amounts}"
@@ -367,7 +382,9 @@ async def _run_agent_with_state(agent, initial_state: dict) -> dict:
 
     session_id = f"stage_{id(agent)}"
     await session_service.create_session(
-        app_name="stage_test", user_id="test", session_id=session_id,
+        app_name="stage_test",
+        user_id="test",
+        session_id=session_id,
         state=initial_state,
     )
 
@@ -381,7 +398,9 @@ async def _run_agent_with_state(agent, initial_state: dict) -> dict:
 
     final_text = ""
     async for event in runner.run_async(
-        user_id="test", session_id=session_id, new_message=message,
+        user_id="test",
+        session_id=session_id,
+        new_message=message,
     ):
         if event.is_final_response():
             if event.content and event.content.parts:
@@ -392,14 +411,15 @@ async def _run_agent_with_state(agent, initial_state: dict) -> dict:
 
     # Also return the session state (agents write their output_key there)
     updated_session = await session_service.get_session(
-        app_name="stage_test", user_id="test", session_id=session_id,
+        app_name="stage_test",
+        user_id="test",
+        session_id=session_id,
     )
 
     return {
         "response_text": final_text,
         "state": updated_session.state if updated_session else {},
     }
-
 
 
 @pytest.mark.integration
@@ -419,6 +439,7 @@ class TestCategorizerIntegration:
     async def _get_real_budget_id(self) -> str:
         """Get a budget ID that has categories."""
         from autopilot.connectors.ynab_connector import YNABConnector
+
         connector = YNABConnector()
         await connector.setup()
         budgets = await connector.client.get_all_budgets()
@@ -441,29 +462,36 @@ class TestCategorizerIntegration:
 
         budget_id = await self._get_real_budget_id()
 
-        parsed_email = json.dumps({
-            "date": "2026-02-18",
-            "payee": "Restaurante El Cielo",
-            "amount": -50000,
-            "card_suffix": "52e0",
-            "memo": "Compra con tarjeta terminada en 52e0",
-        })
+        parsed_email = json.dumps(
+            {
+                "date": "2026-02-18",
+                "payee": "Restaurante El Cielo",
+                "amount": -50000,
+                "card_suffix": "52e0",
+                "memo": "Compra con tarjeta terminada en 52e0",
+            }
+        )
 
-        matched_account = json.dumps({
-            "budget_id": budget_id,
-            "budget_name": "My Budget",
-            "account_id": "test-account-id",
-            "account_name": "Test Account",
-            "match_confidence": "high",
-            "match_reasoning": "Test",
-        })
+        matched_account = json.dumps(
+            {
+                "budget_id": budget_id,
+                "budget_name": "My Budget",
+                "account_id": "test-account-id",
+                "account_name": "Test Account",
+                "match_confidence": "high",
+                "match_reasoning": "Test",
+            }
+        )
 
         categorizer = create_categorizer()
         try:
-            result = await _run_agent_with_state(categorizer, {
-                "parsed_email": parsed_email,
-                "matched_account": matched_account,
-            })
+            result = await _run_agent_with_state(
+                categorizer,
+                {
+                    "parsed_email": parsed_email,
+                    "matched_account": matched_account,
+                },
+            )
         except Exception as e:
             if "ValidationError" in type(e).__name__:
                 pytest.skip(f"LLM output format issue (expected in isolation): {e}")
@@ -479,8 +507,9 @@ class TestCategorizerIntegration:
             categorized = extract_json(categorized)
 
         # The LLM should return at least a category_name and reasoning
-        assert "category_name" in categorized or "category_reasoning" in categorized, \
+        assert "category_name" in categorized or "category_reasoning" in categorized, (
             f"Missing category fields in: {categorized}"
+        )
 
         # Verify the category UUID exists in YNAB (if provided)
         cat_id = categorized.get("category_id")
@@ -488,8 +517,9 @@ class TestCategorizerIntegration:
             connector = YNABConnector()
             categories = await connector.get_categories(budget_id)
             cat_ids = {c["id"] for c in categories}
-            assert cat_id in cat_ids, \
+            assert cat_id in cat_ids, (
                 f"Category ID {cat_id} not found in YNAB budget {budget_id}"
+            )
 
     @pytest.mark.asyncio
     async def test_categorizer_reasoning_is_coherent(self):
@@ -499,29 +529,36 @@ class TestCategorizerIntegration:
 
         budget_id = await self._get_real_budget_id()
 
-        parsed_email = json.dumps({
-            "date": "2026-02-18",
-            "payee": "Netflix",
-            "amount": -39900,
-            "card_suffix": "52e0",
-            "memo": "Cobro recurrente Netflix",
-        })
+        parsed_email = json.dumps(
+            {
+                "date": "2026-02-18",
+                "payee": "Netflix",
+                "amount": -39900,
+                "card_suffix": "52e0",
+                "memo": "Cobro recurrente Netflix",
+            }
+        )
 
-        matched_account = json.dumps({
-            "budget_id": budget_id,
-            "budget_name": "My Budget",
-            "account_id": "test-account-id",
-            "account_name": "Test Account",
-            "match_confidence": "high",
-            "match_reasoning": "Test",
-        })
+        matched_account = json.dumps(
+            {
+                "budget_id": budget_id,
+                "budget_name": "My Budget",
+                "account_id": "test-account-id",
+                "account_name": "Test Account",
+                "match_confidence": "high",
+                "match_reasoning": "Test",
+            }
+        )
 
         categorizer = create_categorizer()
         try:
-            result = await _run_agent_with_state(categorizer, {
-                "parsed_email": parsed_email,
-                "matched_account": matched_account,
-            })
+            result = await _run_agent_with_state(
+                categorizer,
+                {
+                    "parsed_email": parsed_email,
+                    "matched_account": matched_account,
+                },
+            )
         except Exception as e:
             if "ValidationError" in type(e).__name__:
                 pytest.skip(f"LLM output format issue (expected in isolation): {e}")
@@ -534,8 +571,9 @@ class TestCategorizerIntegration:
             categorized = extract_json(categorized)
 
         reasoning = categorized.get("category_reasoning", "").lower()
-        assert "netflix" in reasoning or "suscri" in reasoning or "subscri" in reasoning, \
-            f"Reasoning should mention payee/subscription: {reasoning}"
+        assert (
+            "netflix" in reasoning or "suscri" in reasoning or "subscri" in reasoning
+        ), f"Reasoning should mention payee/subscription: {reasoning}"
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -575,8 +613,12 @@ class TestFullPipelineE2E:
 
         # UUID format validation
         uuid_pattern = re.compile(r"^[a-f0-9-]{36}$")
-        assert uuid_pattern.match(tx["budget_id"]), f"Invalid budget_id format: {tx['budget_id']}"
-        assert uuid_pattern.match(tx["account_id"]), f"Invalid account_id format: {tx['account_id']}"
+        assert uuid_pattern.match(tx["budget_id"]), (
+            f"Invalid budget_id format: {tx['budget_id']}"
+        )
+        assert uuid_pattern.match(tx["account_id"]), (
+            f"Invalid account_id format: {tx['account_id']}"
+        )
 
     @pytest.mark.asyncio
     async def test_full_pipeline_golden_data(self, golden_emails):
@@ -627,9 +669,7 @@ class TestFullPipelineE2E:
         wf = BankToYnabWorkflow()
         result = await wf.execute({"body": email, "auto_create": True})
 
-        assert result.status.value == "success", (
-            f"Pipeline failed: {result.error}"
-        )
+        assert result.status.value == "success", f"Pipeline failed: {result.error}"
         data = result.data
 
         # ── 1. Email Parsing ──────────────────────────────────────
@@ -676,9 +716,7 @@ class TestFullPipelineE2E:
         assert uuid_pattern.match(final["category_id"]), (
             f"Invalid category_id: {final['category_id']}"
         )
-        assert final.get("category_reasoning"), (
-            "Should have category_reasoning"
-        )
+        assert final.get("category_reasoning"), "Should have category_reasoning"
 
         # ── 4. YNAB Transaction Creation ──────────────────────────
         assert final.get("created_in_ynab") is True, (

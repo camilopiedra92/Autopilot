@@ -236,7 +236,7 @@ class AgentBus:
                 "sender": sender,
                 "subscribers": len(matching),
                 "correlation_id": msg.correlation_id,
-            }
+            },
         ) as span:
             if not matching:
                 logger.debug("bus_no_subscribers", topic=topic, sender=sender)
@@ -263,7 +263,7 @@ class AgentBus:
                 delivered=delivered,
                 errors=errors,
             )
-            
+
             span.set_attribute("delivered", delivered)
             span.set_attribute("errors", errors)
 
@@ -330,8 +330,10 @@ class AgentBus:
             "bus.handler",
             attributes={
                 "topic": msg.topic,
-                "handler": handler.__name__ if hasattr(handler, "__name__") else str(handler),
-            }
+                "handler": handler.__name__
+                if hasattr(handler, "__name__")
+                else str(handler),
+            },
         ) as span:
             try:
                 await handler(msg)
@@ -348,10 +350,7 @@ class AgentBus:
                 raise  # Re-raise so asyncio.gather can collect it
 
     def __repr__(self) -> str:
-        return (
-            f"AgentBus(subscriptions={self.subscription_count}, "
-            f"stats={self._stats})"
-        )
+        return f"AgentBus(subscriptions={self.subscription_count}, stats={self._stats})"
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

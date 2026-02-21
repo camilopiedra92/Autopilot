@@ -58,6 +58,7 @@ class PipelineExecutionResult:
         success: Whether all steps completed without errors.
         error: Error message if the pipeline failed.
     """
+
     execution_id: str = ""
     state: dict[str, Any] = field(default_factory=dict)
     steps_completed: list[str] = field(default_factory=list)
@@ -127,30 +128,33 @@ class Pipeline:
                 "pipeline_name": self.name,
                 "execution_id": ctx.execution_id,
                 "step_count": len(self.steps),
-            }
+            },
         ) as span:
             ctx.logger.info(
-            "pipeline_started",
-            pipeline=self.name,
-            steps=[s.name for s in self.steps],
-            initial_keys=list(ctx.state.keys()),
-        )
+                "pipeline_started",
+                pipeline=self.name,
+                steps=[s.name for s in self.steps],
+                initial_keys=list(ctx.state.keys()),
+            )
 
-        await ctx.emit("pipeline_started", {
-            "pipeline": self.name,
-            "step_count": len(self.steps),
-        })
+        await ctx.emit(
+            "pipeline_started",
+            {
+                "pipeline": self.name,
+                "step_count": len(self.steps),
+            },
+        )
 
         try:
             # For resuming HITL, we track which steps were already done
             completed_in_state = ctx.state.get("__steps_completed__", [])
-            
+
             for step in self.steps:
                 if step.name in completed_in_state:
                     ctx.logger.debug("step_skipped_resuming", step=step.name)
                     result.steps_completed.append(step.name)
                     continue
-                
+
                 step_start = time.monotonic()
 
                 ctx.logger.info("step_started", step=step.name)
@@ -165,7 +169,7 @@ class Pipeline:
 
                 step_elapsed = round((time.monotonic() - step_start) * 1000, 2)
                 result.steps_completed.append(step.name)
-                
+
                 # Keep state updated with completed steps for future resumes
                 if "__steps_completed__" not in ctx.state:
                     ctx.state["__steps_completed__"] = []
@@ -178,11 +182,14 @@ class Pipeline:
                     duration_ms=step_elapsed,
                     output_keys=list(step_output.keys()) if step_output else [],
                 )
-                await ctx.emit("step_completed", {
-                    "step": step.name,
-                    "duration_ms": step_elapsed,
-                })
-                
+                await ctx.emit(
+                    "step_completed",
+                    {
+                        "step": step.name,
+                        "duration_ms": step_elapsed,
+                    },
+                )
+
                 # Human-In-The-Loop Pause Check
                 if ctx.state.get("hitl_requested") is True:
                     ctx.logger.info("pipeline_paused_for_hitl", step=step.name)
@@ -200,13 +207,16 @@ class Pipeline:
             ctx.logger.error(
                 "pipeline_failed",
                 pipeline=self.name,
-                step=step.name if 'step' in dir() else "unknown",
+                step=step.name if "step" in dir() else "unknown",
                 error=str(exc),
             )
-            await ctx.emit("pipeline_failed", {
-                "pipeline": self.name,
-                "error": str(exc),
-            })
+            await ctx.emit(
+                "pipeline_failed",
+                {
+                    "pipeline": self.name,
+                    "error": str(exc),
+                },
+            )
             raise
 
         finally:
@@ -221,11 +231,14 @@ class Pipeline:
                     duration_ms=elapsed,
                     steps_completed=result.steps_completed,
                 )
-                await ctx.emit("pipeline_completed", {
-                    "pipeline": self.name,
-                    "duration_ms": elapsed,
-                    "steps_completed": result.steps_completed,
-                })
+                await ctx.emit(
+                    "pipeline_completed",
+                    {
+                        "pipeline": self.name,
+                        "duration_ms": elapsed,
+                        "steps_completed": result.steps_completed,
+                    },
+                )
 
             span.set_attribute("duration_ms", elapsed)
             span.set_attribute("success", result.success)
@@ -308,12 +321,14 @@ class PipelineBuilder:
 
         wrapped_body = _wrap_step(body)
         resolved_name = name or f"loop_{wrapped_body.name}"
-        self._steps.append(LoopAgentAdapter(
-            resolved_name,
-            wrapped_body,
-            condition=condition,
-            max_iterations=max_iterations,
-        ))
+        self._steps.append(
+            LoopAgentAdapter(
+                resolved_name,
+                wrapped_body,
+                condition=condition,
+                max_iterations=max_iterations,
+            )
+        )
         return self
 
     def parallel(
@@ -335,10 +350,12 @@ class PipelineBuilder:
 
         wrapped = [_wrap_step(b) for b in branches]
         resolved_name = name or f"parallel_{'_'.join(b.name for b in wrapped)}"
-        self._steps.append(ParallelAgentAdapter(
-            resolved_name,
-            branches=wrapped,
-        ))
+        self._steps.append(
+            ParallelAgentAdapter(
+                resolved_name,
+                branches=wrapped,
+            )
+        )
         return self
 
     def build(self) -> Pipeline:
@@ -352,6 +369,7 @@ class PipelineBuilder:
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
+
 
 def _is_adk_agent(obj: Any) -> bool:
     """

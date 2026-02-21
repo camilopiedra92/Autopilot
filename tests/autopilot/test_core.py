@@ -290,10 +290,9 @@ class TestFunctionalAgent:
             # Passing an empty dict should fail fast violently at hydration
             with pytest.raises(ValidationError) as exc_info:
                 await agent.invoke(ctx, {"data": {}})
-                
+
             assert "required_field" in str(exc_info.value)
             assert "Field required" in str(exc_info.value)
-
 
     @pytest.mark.asyncio
     async def test_reads_from_ctx_state(self):
@@ -353,10 +352,13 @@ class TestPipeline:
         def step_b(parsed: str) -> dict:
             return {"final": f"Processed: {parsed}"}
 
-        pipeline = Pipeline("test", [
-            FunctionalAgent(step_a),
-            FunctionalAgent(step_b),
-        ])
+        pipeline = Pipeline(
+            "test",
+            [
+                FunctionalAgent(step_a),
+                FunctionalAgent(step_b),
+            ],
+        )
 
         with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
             mock_bus = MagicMock()
@@ -415,10 +417,13 @@ class TestPipeline:
             assert ctx.get("done") is True
 
     def test_repr(self):
-        pipeline = Pipeline("test", [
-            FunctionalAgent(lambda: None, name="a"),
-            FunctionalAgent(lambda: None, name="b"),
-        ])
+        pipeline = Pipeline(
+            "test",
+            [
+                FunctionalAgent(lambda: None, name="a"),
+                FunctionalAgent(lambda: None, name="b"),
+            ],
+        )
         r = repr(pipeline)
         assert "test" in r
         assert "a" in r
@@ -474,12 +479,7 @@ class TestPipelineBuilder:
         def b():
             return {}
 
-        pipeline = (
-            PipelineBuilder("fluent")
-            .step(a)
-            .step(b)
-            .build()
-        )
+        pipeline = PipelineBuilder("fluent").step(a).step(b).build()
         assert pipeline.name == "fluent"
         assert len(pipeline.steps) == 2
 
@@ -597,8 +597,8 @@ class TestSequentialAgentAdapter:
             ctx = AgentContext(pipeline_name="test")
             result = await seq.invoke(ctx, {"x": 5})
 
-            assert result["x"] == 6        # AddX: 5 + 1
-            assert result["y"] == 60       # AddY: 6 * 10
+            assert result["x"] == 6  # AddX: 5 + 1
+            assert result["y"] == 60  # AddY: 6 * 10
 
     @pytest.mark.asyncio
     async def test_error_propagation(self):
@@ -747,6 +747,7 @@ class TestParallelAgentAdapter:
             ctx = AgentContext(pipeline_name="test")
 
             import time
+
             start = time.monotonic()
             result = await par.invoke(ctx, {})
             elapsed = time.monotonic() - start
@@ -814,9 +815,7 @@ class TestPipelineBuilderV3:
             return {"b": 2}
 
         pipeline = (
-            PipelineBuilder("test")
-            .parallel(fetch_a, fetch_b, name="fetch_all")
-            .build()
+            PipelineBuilder("test").parallel(fetch_a, fetch_b, name="fetch_all").build()
         )
 
         assert len(pipeline.steps) == 1
@@ -941,11 +940,7 @@ class TestDAGBuilder:
     def test_dangling_dependency_raises(self):
         agent = DoubleAgent("a")
         with pytest.raises(DAGDependencyError, match="unknown node 'ghost'"):
-            (
-                DAGBuilder("test")
-                .node("a", agent, dependencies=["ghost"])
-                .build()
-            )
+            (DAGBuilder("test").node("a", agent, dependencies=["ghost"]).build())
 
     def test_cycle_detection(self):
         """A→B→A should raise DAGCycleError."""
@@ -962,11 +957,7 @@ class TestDAGBuilder:
         """A→A should raise DAGCycleError."""
         a = DoubleAgent("a")
         with pytest.raises(DAGCycleError, match="cycle"):
-            (
-                DAGBuilder("test")
-                .node("a", a, dependencies=["a"])
-                .build()
-            )
+            (DAGBuilder("test").node("a", a, dependencies=["a"]).build())
 
     def test_function_auto_wrap(self):
         """Plain functions should be auto-wrapped just like PipelineBuilder."""
@@ -1068,6 +1059,7 @@ class TestDAGRunner:
             mock_bus_fn.return_value = mock_bus
 
             import time as time_mod
+
             start = time_mod.monotonic()
             result = await dag.execute()
             elapsed = time_mod.monotonic() - start
@@ -1099,9 +1091,7 @@ class TestDAGRunner:
 
         class MergeAgent(BaseAgent[dict, dict]):
             async def run(self, ctx, input):
-                return {
-                    "merged": f"{input.get('b', '?')}+{input.get('c', '?')}"
-                }
+                return {"merged": f"{input.get('b', '?')}+{input.get('c', '?')}"}
 
         dag = (
             DAGBuilder("diamond")
@@ -1369,7 +1359,9 @@ class TestInMemoryMemoryService:
         assert len(results) >= 2
         # Python-related observations should rank above weather
         texts = [r.text for r in results]
-        python_indices = [i for i, t in enumerate(texts) if "Python" in t or "python" in t.lower()]
+        python_indices = [
+            i for i, t in enumerate(texts) if "Python" in t or "python" in t.lower()
+        ]
         weather_indices = [i for i, t in enumerate(texts) if "weather" in t.lower()]
         if python_indices and weather_indices:
             assert min(python_indices) < min(weather_indices)

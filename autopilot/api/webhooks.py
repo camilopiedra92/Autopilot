@@ -21,6 +21,7 @@ router = APIRouter()
 
 # ── Generic Webhook ──────────────────────────────────────────────────
 
+
 @router.post("/api/webhook/{webhook_path:path}")
 async def generic_webhook(webhook_path: str, request: Request):
     """
@@ -34,16 +35,20 @@ async def generic_webhook(webhook_path: str, request: Request):
         data = {}
 
     # Add headers/query for completeness if needed
-    data.update({
-        "_headers": dict(request.headers),
-        "_query": dict(request.query_params),
-    })
+    data.update(
+        {
+            "_headers": dict(request.headers),
+            "_query": dict(request.query_params),
+        }
+    )
 
     router_svc = get_router()
     try:
         # Prepend slash if missing, or handle strict matching
-        path_key = f"/{webhook_path}" if not webhook_path.startswith("/") else webhook_path
-        
+        path_key = (
+            f"/{webhook_path}" if not webhook_path.startswith("/") else webhook_path
+        )
+
         run = await router_svc.route_webhook(path_key, data)
         return {
             "status": "success",
@@ -51,7 +56,9 @@ async def generic_webhook(webhook_path: str, request: Request):
             "workflow_id": run.workflow_id,
         }
     except KeyError:
-        raise HTTPException(status_code=404, detail=f"No workflow found for webhook path: {path_key}")
+        raise HTTPException(
+            status_code=404, detail=f"No workflow found for webhook path: {path_key}"
+        )
     except Exception as e:
         logger.error("webhook_failed", path=webhook_path, error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
@@ -59,11 +66,12 @@ async def generic_webhook(webhook_path: str, request: Request):
 
 # ── Gmail Pub/Sub Webhook ────────────────────────────────────────────
 
+
 @router.post("/gmail/webhook")
 async def gmail_push_webhook(request: Request):
     """
     Handle Google Cloud Pub/Sub push notifications for Gmail.
-    
+
     Flow:
       1. Receive Pub/Sub message
       2. PubSubConnector decodes & fetches new emails
@@ -95,7 +103,7 @@ async def gmail_push_webhook(request: Request):
     # 2. Route
     router_svc = get_router()
     summary = {"processed": 0, "triggered_runs": 0}
-    
+
     for email in emails:
         # route_gmail_push now returns list[WorkflowRun]
         runs = await router_svc.route_gmail_push(email)
@@ -103,6 +111,3 @@ async def gmail_push_webhook(request: Request):
         summary["triggered_runs"] += len(runs)
 
     return {"status": "ok", "summary": summary}
-
-
-

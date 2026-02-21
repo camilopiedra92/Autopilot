@@ -59,10 +59,10 @@ CRITICAL RULES:
 
 def create_categorizer(model_name: str = "gemini-3-flash-preview") -> LlmAgent:
     """Creates the categorizer agent with semantic coherence guardrails.
-    
+
     Uses `ynab.get_categories_string` tool (auto-resolved by platform)
     to fetch real categories from the YNAB API.
-    
+
     Guardrails:
       - after_model: semantic_coherence_guard (payee↔category validation)
       - after_model: uuid_format_guard (category_id UUID validation)

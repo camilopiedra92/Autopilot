@@ -36,11 +36,11 @@ logger = structlog.get_logger(__name__)
 class WorkflowRegistry:
     """
     Discovers and manages all registered workflows.
-    
+
     Usage:
         registry = WorkflowRegistry()
         registry.discover()  # Scans workflows/ directory
-        
+
         workflow = registry.get("bank_to_ynab")
         all_workflows = registry.list_all()
     """
@@ -54,14 +54,14 @@ class WorkflowRegistry:
     def discover(self) -> list[str]:
         """
         Scan the workflows directory and register all valid workflows.
-        
+
         Returns list of discovered workflow names.
-        
+
         Supports three modes (checked in order):
           1. Classic:    __init__.py with `workflow` export
           2. Auto-class: workflow.py with BaseWorkflow subclass
           3. Pure YAML:  manifest.yaml only
-        
+
         Directories starting with _ or . are skipped.
         """
         discovered = []
@@ -239,7 +239,7 @@ class WorkflowRegistry:
     def get_all_workflows(self) -> list[BaseWorkflow]:
         """
         Get all workflow instances (Platform internal use).
-        
+
         Returns:
             List of BaseWorkflow objects.
         """

@@ -21,6 +21,7 @@ from autopilot.models import (
 
 # ── Helpers ───────────────────────────────────────────────────────────
 
+
 def _make_manifest(**overrides) -> WorkflowManifest:
     """Build a WorkflowManifest with sensible defaults."""
     defaults = dict(
@@ -62,6 +63,7 @@ class StubWorkflow(BaseWorkflow):
 
 # ── Tests: _apply_setting_defaults ────────────────────────────────────
 
+
 class TestApplySettingDefaults:
     """
     Tests for BaseWorkflow._apply_setting_defaults.
@@ -75,9 +77,13 @@ class TestApplySettingDefaults:
     """
 
     def test_injects_defaults_when_absent(self):
-        manifest = _make_manifest(settings=[
-            SettingConfig(key="auto_create", type=SettingType.BOOLEAN, default=True),
-        ])
+        manifest = _make_manifest(
+            settings=[
+                SettingConfig(
+                    key="auto_create", type=SettingType.BOOLEAN, default=True
+                ),
+            ]
+        )
         wf = StubWorkflow(manifest)
 
         result = wf._apply_setting_defaults({"body": "email"})
@@ -86,9 +92,13 @@ class TestApplySettingDefaults:
         assert result["body"] == "email"
 
     def test_does_not_overwrite_explicit_value(self):
-        manifest = _make_manifest(settings=[
-            SettingConfig(key="auto_create", type=SettingType.BOOLEAN, default=True),
-        ])
+        manifest = _make_manifest(
+            settings=[
+                SettingConfig(
+                    key="auto_create", type=SettingType.BOOLEAN, default=True
+                ),
+            ]
+        )
         wf = StubWorkflow(manifest)
 
         result = wf._apply_setting_defaults({"body": "email", "auto_create": False})
@@ -96,9 +106,13 @@ class TestApplySettingDefaults:
         assert result["auto_create"] is False
 
     def test_skips_settings_with_no_default(self):
-        manifest = _make_manifest(settings=[
-            SettingConfig(key="ynab_budget_id", type=SettingType.STRING, default=None),
-        ])
+        manifest = _make_manifest(
+            settings=[
+                SettingConfig(
+                    key="ynab_budget_id", type=SettingType.STRING, default=None
+                ),
+            ]
+        )
         wf = StubWorkflow(manifest)
 
         result = wf._apply_setting_defaults({})
@@ -106,9 +120,13 @@ class TestApplySettingDefaults:
         assert "ynab_budget_id" not in result
 
     def test_does_not_mutate_input(self):
-        manifest = _make_manifest(settings=[
-            SettingConfig(key="auto_create", type=SettingType.BOOLEAN, default=True),
-        ])
+        manifest = _make_manifest(
+            settings=[
+                SettingConfig(
+                    key="auto_create", type=SettingType.BOOLEAN, default=True
+                ),
+            ]
+        )
         wf = StubWorkflow(manifest)
 
         original = {"body": "email"}
@@ -119,11 +137,24 @@ class TestApplySettingDefaults:
         assert result["auto_create"] is True
 
     def test_multiple_settings(self):
-        manifest = _make_manifest(settings=[
-            SettingConfig(key="auto_create", type=SettingType.BOOLEAN, default=True),
-            SettingConfig(key="gmail_sender_filter", type=SettingType.STRING, default="alertasynotificaciones"),
-            SettingConfig(key="ynab_access_token", type=SettingType.SECRET, default=None, required=True),
-        ])
+        manifest = _make_manifest(
+            settings=[
+                SettingConfig(
+                    key="auto_create", type=SettingType.BOOLEAN, default=True
+                ),
+                SettingConfig(
+                    key="gmail_sender_filter",
+                    type=SettingType.STRING,
+                    default="alertasynotificaciones",
+                ),
+                SettingConfig(
+                    key="ynab_access_token",
+                    type=SettingType.SECRET,
+                    default=None,
+                    required=True,
+                ),
+            ]
+        )
         wf = StubWorkflow(manifest)
 
         result = wf._apply_setting_defaults({"body": "email"})
@@ -143,6 +174,7 @@ class TestApplySettingDefaults:
 
 # ── Tests: run() integration with settings ────────────────────────────
 
+
 @pytest.mark.asyncio
 class TestRunAppliesSettingDefaults:
     """
@@ -151,9 +183,13 @@ class TestRunAppliesSettingDefaults:
     """
 
     async def test_run_injects_defaults_into_execute(self):
-        manifest = _make_manifest(settings=[
-            SettingConfig(key="auto_create", type=SettingType.BOOLEAN, default=True),
-        ])
+        manifest = _make_manifest(
+            settings=[
+                SettingConfig(
+                    key="auto_create", type=SettingType.BOOLEAN, default=True
+                ),
+            ]
+        )
         wf = StubWorkflow(manifest)
 
         run = await wf.run(TriggerType.MANUAL, {"body": "email"})
@@ -164,9 +200,13 @@ class TestRunAppliesSettingDefaults:
         assert run.status == RunStatus.SUCCESS
 
     async def test_run_preserves_explicit_overrides(self):
-        manifest = _make_manifest(settings=[
-            SettingConfig(key="auto_create", type=SettingType.BOOLEAN, default=True),
-        ])
+        manifest = _make_manifest(
+            settings=[
+                SettingConfig(
+                    key="auto_create", type=SettingType.BOOLEAN, default=True
+                ),
+            ]
+        )
         wf = StubWorkflow(manifest)
 
         run = await wf.run(TriggerType.MANUAL, {"body": "email", "auto_create": False})
@@ -175,9 +215,13 @@ class TestRunAppliesSettingDefaults:
         assert run.status == RunStatus.SUCCESS
 
     async def test_run_records_enriched_data_in_history(self):
-        manifest = _make_manifest(settings=[
-            SettingConfig(key="auto_create", type=SettingType.BOOLEAN, default=True),
-        ])
+        manifest = _make_manifest(
+            settings=[
+                SettingConfig(
+                    key="auto_create", type=SettingType.BOOLEAN, default=True
+                ),
+            ]
+        )
         wf = StubWorkflow(manifest)
 
         run = await wf.run(TriggerType.WEBHOOK, {"body": "email"})

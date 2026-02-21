@@ -27,7 +27,13 @@ class RouterRunner:
     that matches one of the defined routes.
     """
 
-    def __init__(self, name: str, router_agent: BaseAgent, routes: dict[str, Any], default_route: str | None = None):
+    def __init__(
+        self,
+        name: str,
+        router_agent: BaseAgent,
+        routes: dict[str, Any],
+        default_route: str | None = None,
+    ):
         """
         Args:
             name: Runner instance name.
@@ -60,7 +66,9 @@ class RouterRunner:
         result = PipelineExecutionResult(execution_id=ctx.execution_id)
         start = time.monotonic()
 
-        ctx.logger.info("router_started", runner=self.name, routes=list(self.routes.keys()))
+        ctx.logger.info(
+            "router_started", runner=self.name, routes=list(self.routes.keys())
+        )
         await ctx.emit("router_started", {"runner": self.name})
 
         try:
@@ -68,9 +76,9 @@ class RouterRunner:
             route_decision = await self.router_agent.invoke(ctx, ctx.state)
             if route_decision:
                 ctx.update_state(route_decision)
-                
+
             selected_route = route_decision.get("route", self.default_route)
-            
+
             if not selected_route or selected_route not in self.routes:
                 raise ValueError(
                     f"RouterAgent '{self.router_agent.name}' returned invalid route: '{selected_route}'. "
@@ -78,17 +86,21 @@ class RouterRunner:
                 )
 
             ctx.logger.info("route_selected", runner=self.name, route=selected_route)
-            await ctx.emit("route_selected", {"runner": self.name, "route": selected_route})
-            
+            await ctx.emit(
+                "route_selected", {"runner": self.name, "route": selected_route}
+            )
+
             # Step 2: Retrieve and execute the target engine
             target_engine = self.routes[selected_route]
-            
+
             # The target engine should implement execute(ctx, initial_input=...)
             sub_result = await target_engine.execute(ctx, initial_input=ctx.state)
-            
+
             # Step 3: Merge result states
             ctx.update_state(sub_result.state)
-            result.steps_completed = [f"routed_to_{selected_route}"] + sub_result.steps_completed
+            result.steps_completed = [
+                f"routed_to_{selected_route}"
+            ] + sub_result.steps_completed
 
         except Exception as exc:
             result.success = False
@@ -102,8 +114,12 @@ class RouterRunner:
             result.state = dict(ctx.state)
 
             if result.success:
-                ctx.logger.info("router_completed", runner=self.name, duration_ms=elapsed)
-                await ctx.emit("router_completed", {"runner": self.name, "duration_ms": elapsed})
+                ctx.logger.info(
+                    "router_completed", runner=self.name, duration_ms=elapsed
+                )
+                await ctx.emit(
+                    "router_completed", {"runner": self.name, "duration_ms": elapsed}
+                )
 
         return result
 

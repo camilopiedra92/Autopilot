@@ -156,9 +156,7 @@ class DAGDependencyError(PipelineError):
     error_code = "DAG_DEPENDENCY"
     http_status = 422
 
-    def __init__(
-        self, message: str, *, node: str = "", dependency: str = "", **kwargs
-    ):
+    def __init__(self, message: str, *, node: str = "", dependency: str = "", **kwargs):
         self.node = node
         self.dependency = dependency
         super().__init__(message, **kwargs)
@@ -266,9 +264,6 @@ class ConnectorRateLimitError(ConnectorError):
     http_status = 429
 
 
-
-
-
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  Guardrail Layer — Errors from safety/validation guardrails
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -370,7 +365,9 @@ class ToolCallbackError(AutoPilotError):
     error_code = "TOOL_CALLBACK_ERROR"
     http_status = 500
 
-    def __init__(self, message: str, *, callback_name: str = "", tool_name: str = "", **kwargs):
+    def __init__(
+        self, message: str, *, callback_name: str = "", tool_name: str = "", **kwargs
+    ):
         self.callback_name = callback_name
         self.tool_name = tool_name
         super().__init__(message, **kwargs)

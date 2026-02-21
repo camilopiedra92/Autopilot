@@ -13,6 +13,7 @@ from pathlib import Path
 
 from autopilot.core import load_workflow
 
+
 @pytest.fixture
 def workflow_path():
     """Returns the absolute path to the bank_to_ynab workflow directory."""
@@ -23,10 +24,17 @@ def workflow_path():
 async def test_pipeline_has_eleven_steps(workflow_path):
     """Verify the DSL pipeline is constructed with 11 steps accurately."""
 
-    with patch("workflows.bank_to_ynab.agents.email_parser.create_email_parser") as mock_parser, \
-         patch("workflows.bank_to_ynab.agents.researcher.create_researcher") as mock_researcher, \
-         patch("workflows.bank_to_ynab.agents.categorizer.create_categorizer") as mock_cat:
-
+    with (
+        patch(
+            "workflows.bank_to_ynab.agents.email_parser.create_email_parser"
+        ) as mock_parser,
+        patch(
+            "workflows.bank_to_ynab.agents.researcher.create_researcher"
+        ) as mock_researcher,
+        patch(
+            "workflows.bank_to_ynab.agents.categorizer.create_categorizer"
+        ) as mock_cat,
+    ):
         mock_parser_agent = MagicMock()
         mock_parser_agent.name = "email_parser"
         mock_parser.return_value = mock_parser_agent

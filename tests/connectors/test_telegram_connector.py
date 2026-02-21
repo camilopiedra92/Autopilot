@@ -3,7 +3,10 @@ import httpx
 from unittest.mock import AsyncMock, MagicMock
 
 from autopilot.errors import ConnectorError
-from autopilot.connectors.telegram_connector import AsyncTelegramClient, TelegramConnector
+from autopilot.connectors.telegram_connector import (
+    AsyncTelegramClient,
+    TelegramConnector,
+)
 
 
 @pytest.fixture
@@ -23,7 +26,9 @@ def mock_httpx_client(monkeypatch):
     return mock_client_instance
 
 
-def _make_response(status_code=200, result=None, ok=True, error_code=None, description=None):
+def _make_response(
+    status_code=200, result=None, ok=True, error_code=None, description=None
+):
     """Helper to create a mock Telegram API response."""
     resp = MagicMock()
     resp.status_code = status_code
@@ -45,7 +50,12 @@ async def test_telegram_client_initialization(mock_httpx_client):
 
 @pytest.mark.asyncio
 async def test_telegram_get_me(mock_httpx_client):
-    bot_info = {"id": 123456, "is_bot": True, "first_name": "TestBot", "username": "test_bot"}
+    bot_info = {
+        "id": 123456,
+        "is_bot": True,
+        "first_name": "TestBot",
+        "username": "test_bot",
+    }
     mock_httpx_client.request.return_value = _make_response(result=bot_info)
 
     client = AsyncTelegramClient("dummy_token")
@@ -113,7 +123,9 @@ async def test_telegram_send_photo(mock_httpx_client):
     client = AsyncTelegramClient("dummy_token")
     client._client = mock_httpx_client
 
-    result = await client.send_photo(chat_id="789", photo="https://example.com/photo.jpg", caption="Nice!")
+    result = await client.send_photo(
+        chat_id="789", photo="https://example.com/photo.jpg", caption="Nice!"
+    )
 
     assert result["message_id"] == 50
     payload = mock_httpx_client.request.call_args[1]["json"]

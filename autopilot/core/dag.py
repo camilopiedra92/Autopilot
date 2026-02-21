@@ -116,11 +116,14 @@ class DAGRunner:
             layers=[[n for n in layer] for layer in self._layers],
             total_nodes=len(self._nodes),
         )
-        await ctx.emit("dag_started", {
-            "dag": self.name,
-            "total_nodes": len(self._nodes),
-            "total_layers": len(self._layers),
-        })
+        await ctx.emit(
+            "dag_started",
+            {
+                "dag": self.name,
+                "total_nodes": len(self._nodes),
+                "total_layers": len(self._layers),
+            },
+        )
 
         try:
             for layer_idx, layer in enumerate(self._layers):
@@ -154,10 +157,13 @@ class DAGRunner:
                 dag=self.name,
                 error=str(exc),
             )
-            await ctx.emit("dag_failed", {
-                "dag": self.name,
-                "error": str(exc),
-            })
+            await ctx.emit(
+                "dag_failed",
+                {
+                    "dag": self.name,
+                    "error": str(exc),
+                },
+            )
             raise
 
         finally:
@@ -172,11 +178,14 @@ class DAGRunner:
                     duration_ms=elapsed,
                     steps_completed=result.steps_completed,
                 )
-                await ctx.emit("dag_completed", {
-                    "dag": self.name,
-                    "duration_ms": elapsed,
-                    "steps_completed": result.steps_completed,
-                })
+                await ctx.emit(
+                    "dag_completed",
+                    {
+                        "dag": self.name,
+                        "duration_ms": elapsed,
+                        "steps_completed": result.steps_completed,
+                    },
+                )
 
         return result
 
@@ -209,16 +218,17 @@ class DAGRunner:
             duration_ms=elapsed,
             output_keys=list(output.keys()) if output else [],
         )
-        await ctx.emit("dag_node_completed", {
-            "dag": self.name,
-            "node": node_name,
-            "duration_ms": elapsed,
-        })
+        await ctx.emit(
+            "dag_node_completed",
+            {
+                "dag": self.name,
+                "node": node_name,
+                "duration_ms": elapsed,
+            },
+        )
 
     def __repr__(self) -> str:
-        layers_str = " → ".join(
-            f"[{', '.join(layer)}]" for layer in self._layers
-        )
+        layers_str = " → ".join(f"[{', '.join(layer)}]" for layer in self._layers)
         return f"<DAGRunner {self.name!r} layers={layers_str}>"
 
 
@@ -274,9 +284,7 @@ class DAGBuilder:
             ValueError: If a node with the same name already exists.
         """
         if name in self._nodes:
-            raise ValueError(
-                f"DAGBuilder '{self.name}': duplicate node name '{name}'."
-            )
+            raise ValueError(f"DAGBuilder '{self.name}': duplicate node name '{name}'.")
         self._nodes[name] = DAGNode(
             name=name,
             agent=_wrap_step(agent),

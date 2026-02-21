@@ -78,6 +78,7 @@ class BaseWorkflow:
         """
         if self._manifest is None:
             from autopilot.config_loader import load_manifest
+
             self._manifest = load_manifest(self._workflow_dir)
         return self._manifest
 
@@ -136,6 +137,7 @@ class BaseWorkflow:
             )
         except Exception as e:
             import traceback
+
             print("=== RAW DSL PIPELINE PIPELINE ERROR ===")
             traceback.print_exc()
             logger.error(
@@ -162,6 +164,7 @@ class BaseWorkflow:
             if agents_dir.exists():
                 try:
                     from autopilot.agents.agent_cards import discover_agent_cards
+
                     self._agent_cards = discover_agent_cards(agents_dir)
                 except Exception as e:
                     logger.warning(
@@ -186,6 +189,7 @@ class BaseWorkflow:
         ``build_dag()`` for graph-based workflows.
         """
         from autopilot.core.orchestrator import OrchestrationStrategy
+
         return OrchestrationStrategy.SEQUENTIAL
 
     def build_dag(self):
@@ -238,7 +242,9 @@ class BaseWorkflow:
                 "id": last.id,
                 "status": last.status.value,
                 "duration_ms": last.duration_ms,
-            } if last else None,
+            }
+            if last
+            else None,
         }
 
     def register_routes(self, app) -> None:

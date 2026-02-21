@@ -191,12 +191,14 @@ class InMemoryMemoryService(BaseMemoryService):
         for score, idx in scored[:top_k]:
             obs = self._observations[idx]
             # Return a copy with relevance_score populated
-            results.append(Observation(
-                text=obs.text,
-                metadata=dict(obs.metadata),
-                timestamp=obs.timestamp,
-                relevance_score=round(score, 4),
-            ))
+            results.append(
+                Observation(
+                    text=obs.text,
+                    metadata=dict(obs.metadata),
+                    timestamp=obs.timestamp,
+                    relevance_score=round(score, 4),
+                )
+            )
 
         return results
 
@@ -215,6 +217,7 @@ class InMemoryMemoryService(BaseMemoryService):
 def _tokenize(text: str) -> list[str]:
     """Lowercase split with basic punctuation stripping."""
     import re
+
     return re.findall(r"[a-záéíóúñü\d]+", text.lower())
 
 
@@ -272,16 +275,22 @@ def _cosine_similarity(a: dict[str, float], b: dict[str, float]) -> float:
 class ChromaMemoryService(BaseMemoryService):
     """
     ChromaDB-backed semantic memory.
-    
+
     Provides production-ready, edge-compatible vector search.
     Documents are automatically embedded by Chroma's default embedding function
     (all-MiniLM-L6-v2) or a supplied custom embedding function.
     """
 
-    def __init__(self, collection_name: str = "autopilot_memory", persist_directory: str | None = None):
+    def __init__(
+        self,
+        collection_name: str = "autopilot_memory",
+        persist_directory: str | None = None,
+    ):
         if chromadb is None:
-            raise ImportError("chromadb is required for ChromaMemoryService. Install with `pip install chromadb`.")
-            
+            raise ImportError(
+                "chromadb is required for ChromaMemoryService. Install with `pip install chromadb`."
+            )
+
         if persist_directory:
             self._client = chromadb.PersistentClient(path=persist_directory)
         else:
@@ -298,10 +307,10 @@ class ChromaMemoryService(BaseMemoryService):
     ) -> Observation:
         obs_id = str(uuid.uuid4())
         timestamp = datetime.now(timezone.utc)
-        
+
         meta = dict(metadata or {})
         meta["timestamp"] = timestamp.isoformat()
-        
+
         # Flatten and sanitize metadata (Chroma requires string, int, float, or bool)
         sanitized_meta = {}
         for k, v in meta.items():
@@ -309,15 +318,11 @@ class ChromaMemoryService(BaseMemoryService):
                 sanitized_meta[k] = v
             else:
                 sanitized_meta[k] = str(v)
-                
+
         # ChromaDB sdk is currently synchronous, so we run it directly
         # In a high-throughput async system, this should be offloaded to a threadpool.
-        self._collection.add(
-            documents=[text],
-            metadatas=[sanitized_meta],
-            ids=[obs_id]
-        )
-        
+        self._collection.add(documents=[text], metadatas=[sanitized_meta], ids=[obs_id])
+
         obs = Observation(text=text, metadata=meta, timestamp=timestamp)
         logger.debug(
             "chroma_observation_added",
@@ -336,22 +341,21 @@ class ChromaMemoryService(BaseMemoryService):
         if not query.strip() or await self.count() == 0:
             return []
 
-        results = self._collection.query(
-            query_texts=[query],
-            n_results=top_k
-        )
-        
+        results = self._collection.query(query_texts=[query], n_results=top_k)
+
         observations: list[Observation] = []
         if not results["documents"] or not results["documents"][0]:
             return observations
-            
+
         docs = results["documents"][0]
         metas = results["metadatas"][0] if results["metadatas"] else [{}] * len(docs)
-        distances = results["distances"][0] if results["distances"] else [0.0] * len(docs)
-        
+        distances = (
+            results["distances"][0] if results["distances"] else [0.0] * len(docs)
+        )
+
         for doc, meta, dist in zip(docs, metas, distances):
             meta_dict = dict(meta or {})
-            
+
             # Parse previously serialized timestamp if present
             timestamp_str = meta_dict.pop("timestamp", None)
             if timestamp_str:
@@ -361,18 +365,20 @@ class ChromaMemoryService(BaseMemoryService):
                     ts = datetime.now(timezone.utc)
             else:
                 ts = datetime.now(timezone.utc)
-                
+
             # Cosine distance to similarity (rough heuristic for Chroma L2/Cosine)
             # Chroma default is L2 squared distance.
             similarity_score = max(0.0, 1.0 - dist)
-            
-            observations.append(Observation(
-                text=doc,
-                metadata=meta_dict,
-                timestamp=ts,
-                relevance_score=round(similarity_score, 4)
-            ))
-            
+
+            observations.append(
+                Observation(
+                    text=doc,
+                    metadata=meta_dict,
+                    timestamp=ts,
+                    relevance_score=round(similarity_score, 4),
+                )
+            )
+
         return observations
 
     async def count(self) -> int:

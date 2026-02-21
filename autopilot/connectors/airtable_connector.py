@@ -17,7 +17,12 @@ import time
 import structlog
 import httpx
 from typing import Any, Dict, List, Optional
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 
 from autopilot.connectors.base_connector import BaseConnector
 
@@ -27,10 +32,14 @@ AIRTABLE_API_URL = "https://api.airtable.com/v0"
 
 # ── Exceptions ───────────────────────────────────────────────────────
 
-from autopilot.errors import ConnectorError as AirtableError, ConnectorRateLimitError as AirtableRateLimitError
+from autopilot.errors import (
+    ConnectorError as AirtableError,
+    ConnectorRateLimitError as AirtableRateLimitError,
+)
 
 
 # ── Async Airtable Client ─────────────────────────────────────────────
+
 
 class AsyncAirtableClient:
     """
@@ -73,12 +82,19 @@ class AsyncAirtableClient:
         latency_ms = (time.monotonic() - start) * 1000
 
         if resp.status_code == 429:
-            logger.warning("airtable_rate_limited", path=path, latency_ms=round(latency_ms))
+            logger.warning(
+                "airtable_rate_limited", path=path, latency_ms=round(latency_ms)
+            )
             raise AirtableRateLimitError("Rate limit exceeded")
         if resp.status_code == 401:
-            raise AirtableError("Authentication failed — check your access token", detail="401")
+            raise AirtableError(
+                "Authentication failed — check your access token", detail="401"
+            )
         if resp.status_code >= 400:
-            raise AirtableError(f"API error: {resp.status_code} — {resp.text}", detail=str(resp.status_code))
+            raise AirtableError(
+                f"API error: {resp.status_code} — {resp.text}",
+                detail=str(resp.status_code),
+            )
 
         logger.debug(
             "airtable_request",
@@ -99,12 +115,15 @@ class AsyncAirtableClient:
         retry=retry_if_exception_type(AirtableRateLimitError),
     )
     async def get_records(
-        self, base_id: str, table_id_or_name: str, params: Optional[Dict[str, Any]] = None
+        self,
+        base_id: str,
+        table_id_or_name: str,
+        params: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Fetch records from a given base and table.
         Automatically handles pagination if an `offset` is returned.
-        
+
         Args:
             base_id: The ID of the Airtable base.
             table_id_or_name: The ID or name of the table.
@@ -115,23 +134,33 @@ class AsyncAirtableClient:
         path = f"/{base_id}/{table_id_or_name}"
 
         while True:
-            logger.debug("airtable_fetching_records", base_id=base_id, table_id=table_id_or_name)
+            logger.debug(
+                "airtable_fetching_records", base_id=base_id, table_id=table_id_or_name
+            )
             data = await self._request("GET", path, params=current_params)
-            
+
             records = data.get("records", [])
             all_records.extend(records)
-            
+
             offset = data.get("offset")
             if not offset:
                 break
-            
+
             current_params["offset"] = offset
 
-        logger.info("airtable_records_fetched", base_id=base_id, table_id=table_id_or_name, count=len(all_records))
+        logger.info(
+            "airtable_records_fetched",
+            base_id=base_id,
+            table_id=table_id_or_name,
+            count=len(all_records),
+        )
         return all_records
 
     async def get_records_string(
-        self, base_id: str, table_id_or_name: str, params: Optional[Dict[str, Any]] = None
+        self,
+        base_id: str,
+        table_id_or_name: str,
+        params: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Returns formatted string output of records for easy AI consumption."""
         records = await self.get_records(base_id, table_id_or_name, params)
@@ -146,10 +175,12 @@ class AsyncAirtableClient:
         wait=wait_exponential(multiplier=1, min=2, max=30),
         retry=retry_if_exception_type(AirtableRateLimitError),
     )
-    async def create_records(self, base_id: str, table_id_or_name: str, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def create_records(
+        self, base_id: str, table_id_or_name: str, records: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
         """
         Create up to 10 records per request in Airtable.
-        
+
         Args:
             base_id: The ID of the Airtable base.
             table_id_or_name: The ID or name of the table.
@@ -157,20 +188,30 @@ class AsyncAirtableClient:
         """
         if not records:
             return []
-            
+
         path = f"/{base_id}/{table_id_or_name}"
-        logger.info("airtable_creating_records", base_id=base_id, table_id=table_id_or_name, count=len(records))
-        
+        logger.info(
+            "airtable_creating_records",
+            base_id=base_id,
+            table_id=table_id_or_name,
+            count=len(records),
+        )
+
         created_records = []
         # Airtable limits to 10 records per create request, so we chunk them
         for i in range(0, len(records), 10):
-            chunk = records[i:i+10]
+            chunk = records[i : i + 10]
             payload = {"records": chunk}
             data = await self._request("POST", path, json=payload)
             response_records = data.get("records", [])
             created_records.extend(response_records)
-            
-        logger.info("airtable_records_created", base_id=base_id, table_id=table_id_or_name, total_created=len(created_records))
+
+        logger.info(
+            "airtable_records_created",
+            base_id=base_id,
+            table_id=table_id_or_name,
+            total_created=len(created_records),
+        )
         return created_records
 
     @retry(
@@ -178,10 +219,12 @@ class AsyncAirtableClient:
         wait=wait_exponential(multiplier=1, min=2, max=30),
         retry=retry_if_exception_type(AirtableRateLimitError),
     )
-    async def update_records(self, base_id: str, table_id_or_name: str, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def update_records(
+        self, base_id: str, table_id_or_name: str, records: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
         """
         Update up to 10 records per request via PATCH.
-        
+
         Args:
             base_id: The ID of the Airtable base.
             table_id_or_name: The ID or name of the table.
@@ -190,20 +233,30 @@ class AsyncAirtableClient:
         """
         if not records:
             return []
-            
+
         path = f"/{base_id}/{table_id_or_name}"
-        logger.info("airtable_updating_records", base_id=base_id, table_id=table_id_or_name, count=len(records))
-        
+        logger.info(
+            "airtable_updating_records",
+            base_id=base_id,
+            table_id=table_id_or_name,
+            count=len(records),
+        )
+
         updated_records = []
         # Airtable limits to 10 records per update request
         for i in range(0, len(records), 10):
-            chunk = records[i:i+10]
+            chunk = records[i : i + 10]
             payload = {"records": chunk}
             data = await self._request("PATCH", path, json=payload)
             response_records = data.get("records", [])
             updated_records.extend(response_records)
-            
-        logger.info("airtable_records_updated", base_id=base_id, table_id=table_id_or_name, total_updated=len(updated_records))
+
+        logger.info(
+            "airtable_records_updated",
+            base_id=base_id,
+            table_id=table_id_or_name,
+            total_updated=len(updated_records),
+        )
         return updated_records
 
     @retry(
@@ -211,10 +264,12 @@ class AsyncAirtableClient:
         wait=wait_exponential(multiplier=1, min=2, max=30),
         retry=retry_if_exception_type(AirtableRateLimitError),
     )
-    async def delete_records(self, base_id: str, table_id_or_name: str, record_ids: List[str]) -> List[Dict[str, Any]]:
+    async def delete_records(
+        self, base_id: str, table_id_or_name: str, record_ids: List[str]
+    ) -> List[Dict[str, Any]]:
         """
         Delete up to 10 records per request.
-        
+
         Args:
             base_id: The ID of the Airtable base.
             table_id_or_name: The ID or name of the table.
@@ -222,21 +277,31 @@ class AsyncAirtableClient:
         """
         if not record_ids:
             return []
-            
+
         path = f"/{base_id}/{table_id_or_name}"
-        logger.info("airtable_deleting_records", base_id=base_id, table_id=table_id_or_name, count=len(record_ids))
-        
+        logger.info(
+            "airtable_deleting_records",
+            base_id=base_id,
+            table_id=table_id_or_name,
+            count=len(record_ids),
+        )
+
         deleted_records = []
         # Airtable limits to 10 records per delete request via querystring array
         for i in range(0, len(record_ids), 10):
-            chunk = record_ids[i:i+10]
+            chunk = record_ids[i : i + 10]
             # Construct standard querystring: records[]=rec1&records[]=rec2
             params = [("records[]", rid) for rid in chunk]
             data = await self._request("DELETE", path, params=params)
             response_records = data.get("records", [])
             deleted_records.extend(response_records)
-            
-        logger.info("airtable_records_deleted", base_id=base_id, table_id=table_id_or_name, total_deleted=len(deleted_records))
+
+        logger.info(
+            "airtable_records_deleted",
+            base_id=base_id,
+            table_id=table_id_or_name,
+            total_deleted=len(deleted_records),
+        )
         return deleted_records
 
     async def close(self):
@@ -245,6 +310,7 @@ class AsyncAirtableClient:
 
 
 # ── Connector ────────────────────────────────────────────────────────
+
 
 class AirtableConnector(BaseConnector):
     """
@@ -274,7 +340,9 @@ class AirtableConnector(BaseConnector):
         if self._client is None:
             token = os.environ.get("AIRTABLE_PERSONAL_ACCESS_TOKEN", "")
             if not token:
-                raise AirtableError("AIRTABLE_PERSONAL_ACCESS_TOKEN environment variable is not set")
+                raise AirtableError(
+                    "AIRTABLE_PERSONAL_ACCESS_TOKEN environment variable is not set"
+                )
             self._client = AsyncAirtableClient(access_token=token)
         return self._client
 

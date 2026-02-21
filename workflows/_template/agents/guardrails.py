@@ -2,7 +2,7 @@
 Workflow-Specific Guardrails.
 
 This file demonstrates where to place domain-specific guardrails.
-Platform-level guardrails (like input limits or injection checks) 
+Platform-level guardrails (like input limits or injection checks)
 live in `autopilot.agents.guardrails` and should be reused.
 
 Domain-specific logic (e.g., checking specific business rules mapped
@@ -24,7 +24,7 @@ Example:
 # from google.adk.agents.callback_context import CallbackContext
 # from google.adk.models import LlmResponse
 # from typing import Optional, Callable
-# 
+#
 # def my_domain_guard() -> Callable:
 #     """Example custom after-model guardrail."""
 #     def _guard(context: CallbackContext, response: LlmResponse) -> Optional[LlmResponse]:

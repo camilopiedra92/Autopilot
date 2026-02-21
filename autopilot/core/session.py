@@ -135,11 +135,13 @@ class RedisSessionService(BaseSessionService):
     Dependencies: `redis` (redis-py async module).
     """
 
-    def __init__(self, redis_url: str, session_id: str, prefix: str = "autopilot:session:"):
+    def __init__(
+        self, redis_url: str, session_id: str, prefix: str = "autopilot:session:"
+    ):
         self._client = redis.from_url(redis_url, decode_responses=True)
         self._prefix = f"{prefix}{session_id}:"
         self._session_id = session_id
-        
+
     def _key(self, key: str) -> str:
         return f"{self._prefix}{key}"
 
@@ -174,11 +176,11 @@ class RedisSessionService(BaseSessionService):
         keys = await self._client.keys(f"{self._prefix}*")
         if not keys:
             return {}
-        
+
         values = await self._client.mget(keys)
         # Strip prefix from keys
         prefix_len = len(self._prefix)
-        
+
         result = {}
         for k, v in zip(keys, values):
             if v is not None:
@@ -198,4 +200,3 @@ class RedisSessionService(BaseSessionService):
 
     def __repr__(self) -> str:
         return f"<RedisSessionService session_id={self._session_id}>"
-

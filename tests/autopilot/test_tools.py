@@ -29,6 +29,7 @@ from autopilot.errors import ToolRegistryError, MCPBridgeError
 
 # ── Fixtures ─────────────────────────────────────────────────────────
 
+
 @pytest.fixture(autouse=True)
 def clean_registry():
     """Reset the global tool registry before each test."""
@@ -307,7 +308,7 @@ class TestToolDecorator:
         @tool
         async def async_tool(n: int) -> dict:
             """Async tool."""
-            return {"squared": n ** 2}
+            return {"squared": n**2}
 
         result = await async_tool(4)
         assert result == {"squared": 16}
@@ -461,9 +462,12 @@ class TestMCPBridge:
         """Should raise MCPBridgeError if MCP deps are not installed."""
         bridge = MCPBridge(server_name="test", command="npx")
 
-        with patch.dict("sys.modules", {
-            "google.adk.tools.mcp_tool": None,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "google.adk.tools.mcp_tool": None,
+            },
+        ):
             with pytest.raises(MCPBridgeError, match="MCP dependencies"):
                 bridge.get_toolset()
 

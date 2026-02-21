@@ -209,7 +209,8 @@ class OperationTracker:
         """
         now = time.monotonic()
         to_remove = [
-            op_id for op_id, op in self._operations.items()
+            op_id
+            for op_id, op in self._operations.items()
             if op.is_terminal and (now - op.updated_at) > max_age_seconds
         ]
         for op_id in to_remove:
@@ -355,6 +356,7 @@ def long_running_tool(
     Returns:
         A LongRunningTool instance (auto-registered in the ToolRegistry).
     """
+
     def decorator(fn: Callable) -> LongRunningTool:
         tool = LongRunningTool(fn, name=name, description=description, tags=tags)
         tool.register()

@@ -41,6 +41,7 @@ from autopilot.errors import DSLValidationError, DSLResolutionError
 
 # ── Test helper: patch event bus ────────────────────────────────────────
 
+
 def _mock_event_bus():
     """Context manager that patches the event bus for all tests."""
     mock_bus = MagicMock()
@@ -116,7 +117,9 @@ class TestDSLSchema:
             type=DSLStepType.LOOP,
             max_iterations=5,
             condition_expr="state.get('ok', False)",
-            body=DSLStepDef(name="inner", type=DSLStepType.FUNCTION, ref="os.path.join"),
+            body=DSLStepDef(
+                name="inner", type=DSLStepType.FUNCTION, ref="os.path.join"
+            ),
         )
         assert loop.max_iterations == 5
         assert loop.body is not None
@@ -156,12 +159,14 @@ class TestDSLRefResolution:
         """Resolve a well-known stdlib function."""
         result = _resolve_ref("os.path.join")
         import os.path
+
         assert result is os.path.join
 
     def test_resolve_stdlib_module(self):
         """Resolve a module path returns the module itself."""
         result = _resolve_ref("os.path")
         import os.path
+
         assert result is os.path
 
     def test_resolve_bad_module_raises(self):
@@ -188,6 +193,7 @@ class TestDSLRefResolution:
         """Resolve a function from the project's test helpers."""
         result = _resolve_ref("workflows._template.steps.parse_input")
         from workflows._template.steps import parse_input
+
         assert result is parse_input
 
 
@@ -332,7 +338,9 @@ class TestDSLLoaderSequential:
     def test_invalid_yaml_dict_raises(self):
         """Non-dict input raises DSLValidationError."""
         with pytest.raises(DSLValidationError):
-            load_workflow_from_dict({"name": "x", "strategy": "sequential", "steps": []})
+            load_workflow_from_dict(
+                {"name": "x", "strategy": "sequential", "steps": []}
+            )
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -365,9 +373,21 @@ class TestDSLLoaderDAG:
             "strategy": "dag",
             "nodes": [
                 {"name": "fetch", "ref": "workflows._template.steps.parse_input"},
-                {"name": "enrich_a", "ref": "workflows._template.steps.fetch_source_a", "dependencies": ["fetch"]},
-                {"name": "enrich_b", "ref": "workflows._template.steps.fetch_source_b", "dependencies": ["fetch"]},
-                {"name": "merge", "ref": "workflows._template.steps.merge_results", "dependencies": ["enrich_a", "enrich_b"]},
+                {
+                    "name": "enrich_a",
+                    "ref": "workflows._template.steps.fetch_source_a",
+                    "dependencies": ["fetch"],
+                },
+                {
+                    "name": "enrich_b",
+                    "ref": "workflows._template.steps.fetch_source_b",
+                    "dependencies": ["fetch"],
+                },
+                {
+                    "name": "merge",
+                    "ref": "workflows._template.steps.merge_results",
+                    "dependencies": ["enrich_a", "enrich_b"],
+                },
             ],
         }
 
@@ -443,6 +463,7 @@ class TestDSLLoaderLoop:
         }
 
         from workflows._template.steps import reset_validate_counter
+
         reset_validate_counter()
 
         pipeline = load_workflow_from_dict(raw)
@@ -506,8 +527,16 @@ class TestDSLLoaderParallel:
                     "name": "fetch_all",
                     "type": "parallel",
                     "children": [
-                        {"name": "a", "type": "function", "ref": "workflows._template.steps.fetch_source_a"},
-                        {"name": "b", "type": "function", "ref": "workflows._template.steps.fetch_source_b"},
+                        {
+                            "name": "a",
+                            "type": "function",
+                            "ref": "workflows._template.steps.fetch_source_a",
+                        },
+                        {
+                            "name": "b",
+                            "type": "function",
+                            "ref": "workflows._template.steps.fetch_source_b",
+                        },
                     ],
                 },
             ],
@@ -527,8 +556,16 @@ class TestDSLLoaderParallel:
                     "name": "fetch_all",
                     "type": "parallel",
                     "children": [
-                        {"name": "a", "type": "function", "ref": "workflows._template.steps.fetch_source_a"},
-                        {"name": "b", "type": "function", "ref": "workflows._template.steps.fetch_source_b"},
+                        {
+                            "name": "a",
+                            "type": "function",
+                            "ref": "workflows._template.steps.fetch_source_a",
+                        },
+                        {
+                            "name": "b",
+                            "type": "function",
+                            "ref": "workflows._template.steps.fetch_source_b",
+                        },
                     ],
                 },
             ],
@@ -576,8 +613,16 @@ class TestDSLLoaderNestedSequential:
                     "name": "group",
                     "type": "sequential",
                     "children": [
-                        {"name": "a", "type": "function", "ref": "workflows._template.steps.parse_input"},
-                        {"name": "b", "type": "function", "ref": "workflows._template.steps.fetch_source_a"},
+                        {
+                            "name": "a",
+                            "type": "function",
+                            "ref": "workflows._template.steps.parse_input",
+                        },
+                        {
+                            "name": "b",
+                            "type": "function",
+                            "ref": "workflows._template.steps.fetch_source_a",
+                        },
                     ],
                 },
             ],
@@ -596,8 +641,16 @@ class TestDSLLoaderNestedSequential:
                     "name": "prep",
                     "type": "sequential",
                     "children": [
-                        {"name": "parse", "type": "function", "ref": "workflows._template.steps.parse_input"},
-                        {"name": "enrich", "type": "function", "ref": "workflows._template.steps.fetch_source_a"},
+                        {
+                            "name": "parse",
+                            "type": "function",
+                            "ref": "workflows._template.steps.parse_input",
+                        },
+                        {
+                            "name": "enrich",
+                            "type": "function",
+                            "ref": "workflows._template.steps.fetch_source_a",
+                        },
                     ],
                 },
             ],
@@ -623,7 +676,12 @@ class TestDSLLoaderFile:
 
     def test_load_example_yaml(self):
         """Load the template pipeline YAML from disk."""
-        yaml_path = Path(__file__).parent.parent.parent / "workflows" / "_template" / "pipeline.yaml"
+        yaml_path = (
+            Path(__file__).parent.parent.parent
+            / "workflows"
+            / "_template"
+            / "pipeline.yaml"
+        )
         if not yaml_path.exists():
             pytest.skip(f"Pipeline YAML not found at {yaml_path}")
 
@@ -681,8 +739,16 @@ class TestDSLE2E:
                     "name": "enrich",
                     "type": "parallel",
                     "children": [
-                        {"name": "a", "type": "function", "ref": "workflows._template.steps.fetch_source_a"},
-                        {"name": "b", "type": "function", "ref": "workflows._template.steps.fetch_source_b"},
+                        {
+                            "name": "a",
+                            "type": "function",
+                            "ref": "workflows._template.steps.fetch_source_a",
+                        },
+                        {
+                            "name": "b",
+                            "type": "function",
+                            "ref": "workflows._template.steps.fetch_source_b",
+                        },
                     ],
                 },
                 {
@@ -696,9 +762,7 @@ class TestDSLE2E:
         pipeline = load_workflow_from_dict(raw)
 
         with _mock_event_bus():
-            result = await pipeline.execute(
-                initial_input={"raw_text": "e2e test data"}
-            )
+            result = await pipeline.execute(initial_input={"raw_text": "e2e test data"})
 
         assert result.success is True
         assert result.steps_completed == ["parse", "enrich", "merge"]
@@ -746,29 +810,40 @@ class TestDSLE2E:
                     "name": "enrich",
                     "type": "parallel",
                     "children": [
-                        {"name": "a", "type": "function", "ref": "workflows._template.steps.fetch_source_a"},
-                        {"name": "b", "type": "function", "ref": "workflows._template.steps.fetch_source_b"},
+                        {
+                            "name": "a",
+                            "type": "function",
+                            "ref": "workflows._template.steps.fetch_source_a",
+                        },
+                        {
+                            "name": "b",
+                            "type": "function",
+                            "ref": "workflows._template.steps.fetch_source_b",
+                        },
                     ],
                 },
                 {
                     "name": "finalize",
                     "type": "sequential",
                     "children": [
-                        {"name": "merge", "type": "function", "ref": "workflows._template.steps.merge_results"},
+                        {
+                            "name": "merge",
+                            "type": "function",
+                            "ref": "workflows._template.steps.merge_results",
+                        },
                     ],
                 },
             ],
         }
 
         from workflows._template.steps import reset_validate_counter
+
         reset_validate_counter()
 
         pipeline = load_workflow_from_dict(raw)
 
         with _mock_event_bus():
-            result = await pipeline.execute(
-                initial_input={"raw_text": "mixed test"}
-            )
+            result = await pipeline.execute(initial_input={"raw_text": "mixed test"})
 
         assert result.success is True
         assert result.state["valid"] is True

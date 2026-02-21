@@ -19,9 +19,6 @@ Usage::
     tools = get_tool_registry().to_adk_tools(tags=["connector:ynab"])
 """
 
-
-
-
 import inspect
 import structlog
 from typing import Any, Sequence
@@ -35,14 +32,16 @@ logger = structlog.get_logger(__name__)
 _TOOL_CONTEXT_PARAM = "tool_context"
 
 # Lifecycle methods that should never be exposed as tools
-_EXCLUDED_METHODS = frozenset({
-    "setup",
-    "teardown",
-    "health_check",
-    "get_info",
-    "close",
-    # Dunder and private methods are filtered by the leading-underscore check
-})
+_EXCLUDED_METHODS = frozenset(
+    {
+        "setup",
+        "teardown",
+        "health_check",
+        "get_info",
+        "close",
+        # Dunder and private methods are filtered by the leading-underscore check
+    }
+)
 
 
 def expose_connector_tools(
@@ -99,7 +98,9 @@ def expose_connector_tools(
 
         # Extract description from docstring
         doc = inspect.getdoc(member) or ""
-        description = doc.strip().split("\n")[0] if doc else f"{connector_name} {attr_name}"
+        description = (
+            doc.strip().split("\n")[0] if doc else f"{connector_name} {attr_name}"
+        )
 
         # Detect if the method accepts ToolContext
         sig = inspect.signature(member)
@@ -110,9 +111,11 @@ def expose_connector_tools(
             bound_method = member
 
             if inspect.iscoroutinefunction(member):
+
                 async def _tool_wrapper(*args, _fn=bound_method, **kwargs):
                     return await _fn(*args, **kwargs)
             else:
+
                 def _tool_wrapper(*args, _fn=bound_method, **kwargs):
                     return _fn(*args, **kwargs)
 
@@ -179,6 +182,7 @@ def register_all_connector_tools(
     """
     if connector_registry is None:
         from autopilot.connectors import get_connector_registry
+
         connector_registry = get_connector_registry()
 
     result: dict[str, list[str]] = {}
@@ -193,7 +197,7 @@ def register_all_connector_tools(
                 "connector_tool_registration_skipped",
                 connector=connector_info.name,
                 error=str(e),
-                reason="Client initialization or introspection failed"
+                reason="Client initialization or introspection failed",
             )
             result[connector_info.name] = []
 

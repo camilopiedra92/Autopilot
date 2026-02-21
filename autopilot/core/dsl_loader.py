@@ -387,20 +387,24 @@ def _to_agent(obj: Any, name: str) -> BaseAgent:
     # A callable — could be a factory or a plain function
     if callable(obj):
         import inspect
-        
+
         sig = inspect.signature(obj)
         has_required_args = any(
-            p.default == inspect.Parameter.empty 
-            and p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+            p.default == inspect.Parameter.empty
+            and p.kind
+            in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            )
             for p in sig.parameters.values()
         )
-        
+
         # We only attempt to call it as a factory if it can be called with no arguments.
         if not has_required_args:
             try:
                 result = obj()
                 from autopilot.core.pipeline import _wrap_step, _is_adk_agent
-                
+
                 # Verify the result is actually an agent before wrapping
                 if isinstance(result, BaseAgent) or _is_adk_agent(result):
                     wrapped = _wrap_step(result)

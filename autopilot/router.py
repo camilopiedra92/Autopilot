@@ -27,10 +27,10 @@ class WorkflowRouter:
 
     Usage:
         router = WorkflowRouter(registry)
-        
+
         # Route a webhook
         result = await router.route_webhook("/process-email", {"body": "..."})
-        
+
         # Route a manual trigger
         result = await router.route_manual("bank_to_ynab", {"body": "..."})
     """
@@ -40,12 +40,10 @@ class WorkflowRouter:
 
     # ── Webhook Routing ───────────────────────────────────────────────
 
-    async def route_webhook(
-        self, path: str, data: dict[str, Any]
-    ) -> WorkflowRun:
+    async def route_webhook(self, path: str, data: dict[str, Any]) -> WorkflowRun:
         """
         Route a webhook request to the workflow that handles the given path.
-        
+
         Raises KeyError if no workflow handles the path.
         """
         workflow = self._registry.find_by_webhook_path(path)
@@ -69,13 +67,13 @@ class WorkflowRouter:
     ) -> list[WorkflowRun]:
         """
         Route a Gmail message to all workflows that match its criteria.
-        
+
         Matching Logic:
           1. Workflow must be enabled.
           2. Workflow must have a GMAIL_PUSH trigger.
           3. Trigger 'filter' (sender) must match email 'from' (if set).
           4. Trigger 'label_ids' must overlap with email 'labelIds' (if set).
-        
+
         Args:
             email_data: Dict containing 'id', 'from', 'subject', 'body', 'labelIds'.
             trigger_source: Origin of the trigger (default: "pubsub").
@@ -85,18 +83,18 @@ class WorkflowRouter:
         """
         sender = email_data.get("from", "").lower()
         email_labels = set(email_data.get("labelIds", []))
-        
+
         # Find all matching workflows
         matches: list[tuple[Any, Any]] = []  # (workflow, trigger_config)
-        
+
         for workflow in self._registry.get_all_workflows():
             if not workflow.manifest.enabled:
                 continue
-                
+
             for trigger in workflow.manifest.triggers:
                 if trigger.type != TriggerType.GMAIL_PUSH:
                     continue
-                
+
                 # 1. Match Sender (if filter is set)
                 if trigger.filter:
                     if trigger.filter.lower() not in sender:
@@ -107,11 +105,13 @@ class WorkflowRouter:
                     trigger_labels = set(trigger.label_ids)
                     if not trigger_labels.intersection(email_labels):
                         continue
-                
+
                 matches.append((workflow, trigger))
-        
+
         if not matches:
-            logger.info("gmail_routing_no_matches", sender=sender, labels=list(email_labels))
+            logger.info(
+                "gmail_routing_no_matches", sender=sender, labels=list(email_labels)
+            )
             return []
 
         results = []
@@ -122,7 +122,7 @@ class WorkflowRouter:
                 sender=sender,
                 trigger_labels=trigger.label_ids,
             )
-            
+
             # Prepare trigger data for the workflow
             trigger_payload = {
                 "source": trigger_source,
@@ -131,7 +131,7 @@ class WorkflowRouter:
                 "subject": email_data.get("subject", ""),
                 "id": email_data.get("id"),
             }
-            
+
             # Execute — BaseWorkflow.run() handles setting defaults
             run = await workflow.run(TriggerType.GMAIL_PUSH, trigger_payload)
             results.append(run)
@@ -140,12 +140,10 @@ class WorkflowRouter:
 
     # ── Manual Trigger ────────────────────────────────────────────────
 
-    async def route_manual(
-        self, workflow_id: str, data: dict[str, Any]
-    ) -> WorkflowRun:
+    async def route_manual(self, workflow_id: str, data: dict[str, Any]) -> WorkflowRun:
         """
         Manually trigger a specific workflow.
-        
+
         Raises KeyError if workflow not found.
         """
         workflow = self._registry.get_or_raise(workflow_id)
@@ -161,7 +159,7 @@ class WorkflowRouter:
     async def route_scheduled(self, workflow_id: str) -> WorkflowRun:
         """
         Execute a scheduled workflow.
-        
+
         Raises KeyError if workflow not found.
         """
         workflow = self._registry.get_or_raise(workflow_id)
@@ -181,4 +179,3 @@ def get_router() -> WorkflowRouter:
     if _router is None:
         _router = WorkflowRouter()
     return _router
-

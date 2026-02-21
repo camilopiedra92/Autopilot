@@ -12,9 +12,7 @@ from autopilot.models import WorkflowManifest, WorkflowInfo, TriggerConfig, Trig
 
 client = TestClient(app)
 
-HEADERS = {
-    "X-API-Key": "test-secret-123"
-}
+HEADERS = {"X-API-Key": "test-secret-123"}
 
 
 @pytest.fixture
@@ -22,7 +20,7 @@ def mock_registry():
     with patch("autopilot.api.v1.routes.get_registry") as mock_get_registry:
         registry = MagicMock()
         mock_get_registry.return_value = registry
-        
+
         info = WorkflowInfo(
             name="test_flow",
             display_name="Test Flow",
@@ -32,20 +30,18 @@ def mock_registry():
             triggers=[TriggerConfig(type=TriggerType.WEBHOOK, path="/test")],
             icon="⚡",
             color="#000",
-            tags=["test"]
+            tags=["test"],
         )
         registry.list_all.return_value = [info]
         registry.count = 1
-        
+
         wf = MagicMock()
         wf.manifest = WorkflowManifest(
-            name="test_flow",
-            display_name="Test Flow",
-            version="1.0.0"
+            name="test_flow", display_name="Test Flow", version="1.0.0"
         )
         wf.recent_runs = []
         registry.get.return_value = wf
-        
+
         yield registry
 
 
@@ -54,18 +50,19 @@ def mock_router_svc():
     with patch("autopilot.api.v1.routes.get_router") as mock_get_router:
         router = MagicMock()
         mock_get_router.return_value = router
-        
+
         # Mock run response
         run = MagicMock()
         run.id = "run-123"
         run.workflow_id = "test_flow"
         from autopilot.models import RunStatus
+
         run.status = RunStatus.SUCCESS
         run.result = {"msg": "done"}
         run.error = None
-        
+
         router.route_manual = AsyncMock(return_value=run)
-        
+
         yield router
 
 
@@ -93,15 +90,13 @@ def test_invalid_api_key():
 def test_execute_workflow(mock_router_svc):
     payload = {"foo": "bar"}
     response = client.post(
-        "/api/v1/workflows/test_flow/execute", 
-        headers=HEADERS,
-        json=payload
+        "/api/v1/workflows/test_flow/execute", headers=HEADERS, json=payload
     )
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
     assert data["run_id"] == "run-123"
-    
+
     mock_router_svc.route_manual.assert_called_once_with("test_flow", payload)
 
 
@@ -111,4 +106,3 @@ def test_get_workflow_runs(mock_registry):
     data = response.json()
     assert data["workflow_id"] == "test_flow"
     assert isinstance(data["runs"], list)
-

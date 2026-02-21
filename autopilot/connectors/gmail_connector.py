@@ -61,11 +61,11 @@ class GmailConnector(BaseConnector):
     # Paths to search for OAuth files (Cloud Run mounts → local fallback)
     _CREDENTIALS_PATHS = [
         "/secrets/credentials/credentials.json",  # Cloud Run secret mount
-        "credentials.json",                        # Local development
+        "credentials.json",  # Local development
     ]
     _TOKEN_PATHS = [
         "/secrets/token/token.json",  # Cloud Run secret mount
-        "token.json",                 # Local development
+        "token.json",  # Local development
     ]
 
     def _find_file(self, candidates: list[str]) -> str | None:
@@ -96,7 +96,9 @@ class GmailConnector(BaseConnector):
                     with open(writable_token, "w") as f:
                         f.write(creds.to_json())
                 except OSError:
-                    logger.warning("gmail_token_save_skipped", reason="read-only filesystem")
+                    logger.warning(
+                        "gmail_token_save_skipped", reason="read-only filesystem"
+                    )
             else:
                 if not credentials_path:
                     raise FileNotFoundError(
@@ -104,7 +106,9 @@ class GmailConnector(BaseConnector):
                         + ", ".join(self._CREDENTIALS_PATHS)
                     )
                 logger.info("gmail_starting_oauth_flow", path=credentials_path)
-                flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    credentials_path, SCOPES
+                )
                 creds = flow.run_local_server(port=0)
 
                 with open("token.json", "w") as token:
@@ -152,7 +156,9 @@ class GmailConnector(BaseConnector):
                 logger.warning(
                     "gmail_label_not_found",
                     label_name=name,
-                    available=[l["name"] for l in all_labels if l.get("type") == "user"],
+                    available=[
+                        l["name"] for l in all_labels if l.get("type") == "user"
+                    ],
                 )
         return resolved
 
@@ -203,7 +209,12 @@ class GmailConnector(BaseConnector):
 
         emails = []
         for message in messages:
-            msg = self.service.users().messages().get(userId="me", id=message["id"]).execute()
+            msg = (
+                self.service.users()
+                .messages()
+                .get(userId="me", id=message["id"])
+                .execute()
+            )
             payload = msg["payload"]
             headers = payload.get("headers", [])
             subject = next(
@@ -213,12 +224,14 @@ class GmailConnector(BaseConnector):
 
             body = self.decode_body(payload)
 
-            emails.append({
-                "id": message["id"],
-                "subject": subject,
-                "body": body,
-                "snippet": msg.get("snippet", ""),
-            })
+            emails.append(
+                {
+                    "id": message["id"],
+                    "subject": subject,
+                    "body": body,
+                    "snippet": msg.get("snippet", ""),
+                }
+            )
 
         return emails
 

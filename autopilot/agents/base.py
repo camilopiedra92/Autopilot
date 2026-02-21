@@ -57,18 +57,19 @@ def create_platform_agent(
     """
     # Configure generation config if parameters provided
     gen_config = kwargs.pop("generate_content_config", None)
-    
+
     # Auto-resolve tools passed as strings via the platform registry
     resolved_tools = []
     if tools:
         string_tools = [t for t in tools if isinstance(t, str)]
         other_tools = [t for t in tools if not isinstance(t, str)]
-        
+
         if string_tools:
             from autopilot.core.tools import get_tool_registry
+
             resolved_from_strings = get_tool_registry().to_adk_tools(names=string_tools)
             resolved_tools.extend(resolved_from_strings)
-            
+
         resolved_tools.extend(other_tools)
     if temperature is not None:
         if gen_config is None:
@@ -80,26 +81,34 @@ def create_platform_agent(
     user_before_model = kwargs.pop("before_model_callback", None)
     if user_before_model:
         # User callback first, then platform logger
-        final_before_model = create_chained_before_callback(user_before_model, before_model_logger)
+        final_before_model = create_chained_before_callback(
+            user_before_model, before_model_logger
+        )
     else:
         final_before_model = before_model_logger
 
     user_after_model = kwargs.pop("after_model_callback", None)
     if user_after_model:
         # Platform logger first (latency), then user callback (guardrails)
-        final_after_model = create_chained_after_callback(after_model_logger, user_after_model)
+        final_after_model = create_chained_after_callback(
+            after_model_logger, user_after_model
+        )
     else:
         final_after_model = after_model_logger
 
     user_before_tool = kwargs.pop("before_tool_callback", None)
     final_before_tool = before_tool_logger
     if user_before_tool:
-        final_before_tool = create_chained_before_callback(user_before_tool, before_tool_logger)
+        final_before_tool = create_chained_before_callback(
+            user_before_tool, before_tool_logger
+        )
 
     user_after_tool = kwargs.pop("after_tool_callback", None)
     final_after_tool = after_tool_logger
     if user_after_tool:
-        final_after_tool = create_chained_after_callback(after_tool_logger, user_after_tool)
+        final_after_tool = create_chained_after_callback(
+            after_tool_logger, user_after_tool
+        )
 
     primary_agent = LlmAgent(
         name=name,

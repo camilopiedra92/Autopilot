@@ -236,6 +236,7 @@ class ToolRegistry:
             if "long_running" in info.tags:
                 try:
                     from google.adk.tools import LongRunningFunctionTool
+
                     adk_tools.append(LongRunningFunctionTool(func=func))
                 except ImportError:
                     # Fall back to regular FunctionTool
@@ -287,9 +288,7 @@ class ToolRegistry:
         if tags is not None:
             tag_set = set(tags)
             return [
-                name
-                for name, info in self._info.items()
-                if tag_set & set(info.tags)
+                name for name, info in self._info.items() if tag_set & set(info.tags)
             ]
 
         return list(self._tools.keys())
@@ -399,9 +398,12 @@ def tool(
     The decorated function is unchanged — it can still be called normally.
     Registration happens at import time into the global ToolRegistry.
     """
+
     def decorator(fn: Callable) -> Callable:
         registry = get_tool_registry()
-        registry.register(fn, name=name, description=description, tags=tags, source="decorator")
+        registry.register(
+            fn, name=name, description=description, tags=tags, source="decorator"
+        )
 
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
@@ -409,9 +411,11 @@ def tool(
 
         # Preserve async nature
         if inspect.iscoroutinefunction(fn):
+
             @functools.wraps(fn)
             async def async_wrapper(*args, **kwargs):
                 return await fn(*args, **kwargs)
+
             async_wrapper._tool_info = registry.get_info(name or fn.__name__)
             return async_wrapper
 

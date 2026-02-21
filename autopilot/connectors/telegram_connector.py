@@ -19,7 +19,12 @@ import time
 import structlog
 import httpx
 from typing import Any, Optional
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 
 from autopilot.connectors.base_connector import BaseConnector
 
@@ -27,10 +32,14 @@ logger = structlog.get_logger(__name__)
 
 # ── Exceptions ───────────────────────────────────────────────────────
 
-from autopilot.errors import ConnectorError as TelegramError, ConnectorRateLimitError as TelegramRateLimitError
+from autopilot.errors import (
+    ConnectorError as TelegramError,
+    ConnectorRateLimitError as TelegramRateLimitError,
+)
 
 
 # ── Async Telegram Client ────────────────────────────────────────────
+
 
 class AsyncTelegramClient:
     """
@@ -87,7 +96,9 @@ class AsyncTelegramClient:
             )
             raise TelegramRateLimitError("Rate limit exceeded")
         if resp.status_code == 401:
-            raise TelegramError("Authentication failed — check your bot token", detail="401")
+            raise TelegramError(
+                "Authentication failed — check your bot token", detail="401"
+            )
 
         data = resp.json()
 
@@ -364,6 +375,7 @@ class AsyncTelegramClient:
 
 # ── Connector ────────────────────────────────────────────────────────
 
+
 class TelegramConnector(BaseConnector):
     """
     Telegram Bot API integration block — send messages, photos, documents,
@@ -393,7 +405,9 @@ class TelegramConnector(BaseConnector):
         if self._client is None:
             token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
             if not token:
-                raise TelegramError("TELEGRAM_BOT_TOKEN environment variable is not set")
+                raise TelegramError(
+                    "TELEGRAM_BOT_TOKEN environment variable is not set"
+                )
             self._client = AsyncTelegramClient(bot_token=token)
         return self._client
 

@@ -182,6 +182,7 @@ class ToolCallbackManager:
         tools: list[str] | None = None,
     ) -> Callable:
         """Decorator to register a before-tool callback."""
+
         def decorator(fn: Callable) -> Callable:
             self.register_before(fn, tools=tools)
             return fn
@@ -197,6 +198,7 @@ class ToolCallbackManager:
         tools: list[str] | None = None,
     ) -> Callable:
         """Decorator to register an after-tool callback."""
+
         def decorator(fn: Callable) -> Callable:
             self.register_after(fn, tools=tools)
             return fn
@@ -238,7 +240,9 @@ class ToolCallbackManager:
                         "tool_blocked_by_before_callback",
                         tool=tool_name,
                         callback=getattr(callback, "__name__", "unknown"),
-                        result_keys=list(result.keys()) if isinstance(result, dict) else None,
+                        result_keys=list(result.keys())
+                        if isinstance(result, dict)
+                        else None,
                     )
                     return result
             except Exception as exc:
@@ -303,7 +307,9 @@ class ToolCallbackManager:
         self._tool_filters.clear()
 
     def __repr__(self) -> str:
-        return f"<ToolCallbackManager before={self.before_count} after={self.after_count}>"
+        return (
+            f"<ToolCallbackManager before={self.before_count} after={self.after_count}>"
+        )
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -391,7 +397,7 @@ def create_rate_limit_callback(
             )
             return {
                 "error": f"Rate limit exceeded for '{tool_name}': "
-                         f"{max_calls} calls per {window_seconds}s",
+                f"{max_calls} calls per {window_seconds}s",
                 "blocked": True,
                 "retryable": True,
             }
@@ -436,6 +442,8 @@ async def auth_check_callback(
         }
 
     return None
+
+
 """
 Description: Tool lifecycle callbacks for before/after hook interception around every tool call, enabling rate limiting, audit logging, auth checking, and result transformation.
 """

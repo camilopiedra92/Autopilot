@@ -25,7 +25,7 @@ class ReactRunner:
     """
     Executes a reasoning loop over a single autonomous agent.
 
-    The loop continues until the state signals `react_finished = True` or the 
+    The loop continues until the state signals `react_finished = True` or the
     max_iterations limit is reached.
     """
 
@@ -56,7 +56,10 @@ class ReactRunner:
         start = time.monotonic()
 
         ctx.logger.info("react_started", runner=self.name, agent=self.agent.name)
-        await ctx.emit("react_started", {"runner": self.name, "max_iterations": self.max_iterations})
+        await ctx.emit(
+            "react_started",
+            {"runner": self.name, "max_iterations": self.max_iterations},
+        )
 
         try:
             for iteration in range(1, self.max_iterations + 1):
@@ -65,17 +68,19 @@ class ReactRunner:
 
                 # Let the agent reason and act
                 output = await self.agent.invoke(ctx, ctx.state)
-                
+
                 if output:
                     ctx.update_state(output)
-                
+
                 result.steps_completed.append(f"react_iter_{iteration}")
 
                 ctx.logger.info("react_iteration_completed", iteration=iteration)
                 await ctx.emit("react_iteration_completed", {"iteration": iteration})
 
                 # Check for termination sequence signaling the goal is met
-                if ctx.state.get("react_finished") is True or (isinstance(output, dict) and output.get("react_finished") is True):
+                if ctx.state.get("react_finished") is True or (
+                    isinstance(output, dict) and output.get("react_finished") is True
+                ):
                     ctx.logger.info("react_goal_met", iteration=iteration)
                     await ctx.emit("react_goal_met", {"iteration": iteration})
                     break
@@ -84,7 +89,7 @@ class ReactRunner:
                 # Loop exhausted without 'react_finished' == True
                 raise MaxRetriesExceededError(
                     f"ReactRunner '{self.name}' exhausted {self.max_iterations} iterations without completion.",
-                    iterations=self.max_iterations
+                    iterations=self.max_iterations,
                 )
 
         except Exception as exc:
@@ -99,8 +104,12 @@ class ReactRunner:
             result.state = dict(ctx.state)
 
             if result.success:
-                ctx.logger.info("react_completed", runner=self.name, duration_ms=elapsed)
-                await ctx.emit("react_completed", {"runner": self.name, "duration_ms": elapsed})
+                ctx.logger.info(
+                    "react_completed", runner=self.name, duration_ms=elapsed
+                )
+                await ctx.emit(
+                    "react_completed", {"runner": self.name, "duration_ms": elapsed}
+                )
 
         return result
 

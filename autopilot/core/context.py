@@ -172,6 +172,7 @@ class AgentContext:
             all_tools = ctx.tools.list_all()
         """
         from autopilot.core.tools.registry import get_tool_registry
+
         return get_tool_registry()
 
     # ── Agent Bus (A2A) ──────────────────────────────────────────────
@@ -193,6 +194,7 @@ class AgentContext:
             await ctx.bus.publish("agent.completed", {"result": ...})
         """
         from autopilot.core.bus import get_agent_bus
+
         return get_agent_bus()
 
     async def publish(self, topic: str, payload: dict | None = None) -> None:
@@ -223,10 +225,10 @@ class AgentContext:
         child = AgentContext(
             execution_id=self.execution_id,
             pipeline_name=self.pipeline_name,
-            state=self.state,          # Shared reference — intentional
+            state=self.state,  # Shared reference — intentional
             metadata=self.metadata,
-            session=self.session,      # Shared — same session across steps
-            memory=self.memory,        # Shared — same memory across steps
+            session=self.session,  # Shared — same session across steps
+            memory=self.memory,  # Shared — same memory across steps
             _stream_id=self._stream_id,
             _started_at=self._started_at,
         )

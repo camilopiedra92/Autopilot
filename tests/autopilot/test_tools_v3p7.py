@@ -87,9 +87,9 @@ def registry():
 
 
 class TestToolCallbackManager:
-
     async def test_before_allows_execution(self, callback_mgr: ToolCallbackManager):
         """Before callback returning None allows tool to proceed."""
+
         async def allow(tool_name, args, context):
             return None
 
@@ -99,6 +99,7 @@ class TestToolCallbackManager:
 
     async def test_before_blocks_execution(self, callback_mgr: ToolCallbackManager):
         """Before callback returning dict blocks tool execution."""
+
         async def block(tool_name, args, context):
             return {"error": "blocked", "blocked": True}
 
@@ -127,6 +128,7 @@ class TestToolCallbackManager:
 
     async def test_after_chains_results(self, callback_mgr: ToolCallbackManager):
         """After callbacks receive result from previous callback."""
+
         async def double(tool_name, args, result, context):
             return result * 2
 
@@ -156,6 +158,7 @@ class TestToolCallbackManager:
 
     async def test_before_error_does_not_block(self, callback_mgr: ToolCallbackManager):
         """Exception in before callback is swallowed; execution continues."""
+
         async def broken(tool_name, args, context):
             raise RuntimeError("broken callback")
 
@@ -165,14 +168,18 @@ class TestToolCallbackManager:
 
     async def test_decorator_syntax_before(self, callback_mgr: ToolCallbackManager):
         """@manager.before decorator registers the callback."""
+
         @callback_mgr.before
         async def my_hook(tool_name, args, context):
             return None
 
         assert callback_mgr.before_count == 1
 
-    async def test_decorator_syntax_after_with_tools(self, callback_mgr: ToolCallbackManager):
+    async def test_decorator_syntax_after_with_tools(
+        self, callback_mgr: ToolCallbackManager
+    ):
         """@manager.after(tools=[...]) decorator with tool filtering."""
+
         @callback_mgr.after(tools=["search"])
         async def my_hook(tool_name, args, result, context):
             return result
@@ -181,6 +188,7 @@ class TestToolCallbackManager:
 
     async def test_clear(self, callback_mgr: ToolCallbackManager):
         """clear() removes all registered callbacks."""
+
         async def h1(tool_name, args, context):
             return None
 
@@ -212,7 +220,6 @@ class TestToolCallbackManager:
 
 
 class TestBuiltinCallbacks:
-
     async def test_audit_log_passes_through(self):
         """audit_log_callback returns the result unchanged."""
         result = await audit_log_callback("test", {"a": 1}, {"data": "ok"}, {})
@@ -268,9 +275,10 @@ class TestBuiltinCallbacks:
 
 
 class TestToolAuthManager:
-
     def test_register_config(self, auth_mgr: ToolAuthManager):
-        config = ToolAuthConfig(tool_name="ynab.create", auth_type="api_key", credential_key="YNAB_TOKEN")
+        config = ToolAuthConfig(
+            tool_name="ynab.create", auth_type="api_key", credential_key="YNAB_TOKEN"
+        )
         auth_mgr.register(config)
         assert auth_mgr.get_config("ynab.create") is config
 
@@ -292,7 +300,9 @@ class TestToolAuthManager:
         config = ToolAuthConfig(tool_name="search.api", credential_key="SEARCH_KEY")
         auth_mgr.register(config)
 
-        cred = auth_mgr.get_credential("search.api", state={"SEARCH_KEY": "state-secret"})
+        cred = auth_mgr.get_credential(
+            "search.api", state={"SEARCH_KEY": "state-secret"}
+        )
         assert cred is not None
         assert cred.token == "state-secret"
 
@@ -379,7 +389,6 @@ class TestToolAuthManager:
 
 
 class TestAuthCredential:
-
     def test_valid_credential(self):
         cred = AuthCredential(auth_type="api_key", token="secret")
         assert cred.is_valid is True
@@ -395,7 +404,6 @@ class TestAuthCredential:
 
 
 class TestOperationTracker:
-
     def test_create_operation(self, tracker: OperationTracker):
         op = tracker.create("batch_tool")
         assert op.tool_name == "batch_tool"
@@ -475,9 +483,9 @@ class TestOperationTracker:
 
 
 class TestToolContextDetection:
-
     def test_regular_function_no_context(self, registry: ToolRegistry):
         """Regular function should NOT have requires_context."""
+
         def simple_tool(x: int, y: str) -> dict:
             """Simple tool."""
             return {}
@@ -489,6 +497,7 @@ class TestToolContextDetection:
 
     def test_function_with_tool_context_param(self, registry: ToolRegistry):
         """Function with 'tool_context' param should be detected."""
+
         def context_tool(x: int, tool_context) -> dict:
             """Uses context."""
             return {}
@@ -507,7 +516,6 @@ class TestToolContextDetection:
 
 
 class TestLongRunningTool:
-
     def test_create_tool(self):
         def batch_process(items: list) -> dict:
             """Process items in batch."""
@@ -545,7 +553,6 @@ class TestLongRunningTool:
 
 
 class TestNewErrorTypes:
-
     def test_tool_callback_error(self):
         err = ToolCallbackError(
             "Callback failed",

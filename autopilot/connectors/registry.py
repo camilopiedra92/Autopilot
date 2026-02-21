@@ -5,9 +5,9 @@ The registry maintains all available connectors and provides lifecycle
 management (setup, teardown, health checks). Similar in spirit to
 WorkflowRegistry but for reusable integration pieces.
 
-Note: This registry uses a process-global singleton pattern. It assumes a 
+Note: This registry uses a process-global singleton pattern. It assumes a
 single-process execution environment (like Cloud Run or standard uvicorn workers).
-It is NOT thread-safe for concurrent writes during runtime, but safe for 
+It is NOT thread-safe for concurrent writes during runtime, but safe for
 asyncio event loops within a single process.
 
 Usage:
@@ -68,9 +68,7 @@ class ConnectorRegistry:
         """Get a connector by name. Raises KeyError if not found."""
         if name not in self._connectors:
             available = list(self._connectors.keys())
-            raise KeyError(
-                f"Connector '{name}' not found. Available: {available}"
-            )
+            raise KeyError(f"Connector '{name}' not found. Available: {available}")
         return self._connectors[name]
 
     def list_all(self) -> list[ConnectorInfo]:

@@ -22,8 +22,10 @@ from pydantic import BaseModel, Field
 
 # ── Trigger Configuration ────────────────────────────────────────────
 
+
 class TriggerType(str, enum.Enum):
     """Supported trigger types for workflows."""
+
     WEBHOOK = "webhook"
     GMAIL_PUSH = "gmail_push"
     SCHEDULED = "scheduled"
@@ -33,6 +35,7 @@ class TriggerType(str, enum.Enum):
 
 class TriggerConfig(BaseModel):
     """Configuration for a single workflow trigger."""
+
     type: TriggerType
     # Webhook-specific
     path: str | None = None
@@ -47,6 +50,7 @@ class TriggerConfig(BaseModel):
 
 # ── Settings Configuration ───────────────────────────────────────────
 
+
 class SettingType(str, enum.Enum):
     STRING = "string"
     SECRET = "secret"
@@ -57,6 +61,7 @@ class SettingType(str, enum.Enum):
 
 class SettingConfig(BaseModel):
     """A single configurable setting for a workflow."""
+
     key: str
     type: SettingType = SettingType.STRING
     required: bool = False
@@ -67,35 +72,38 @@ class SettingConfig(BaseModel):
 
 # ── Workflow Manifest ────────────────────────────────────────────────
 
+
 class WorkflowManifest(BaseModel):
     """
     Declarative manifest describing a workflow.
-    
+
     Can be loaded from manifest.yaml or defined in code.
     Tells the platform everything it needs to know to
     register, route, and display the workflow.
     """
-    name: str                       # Unique ID (e.g. "bank_to_ynab")
-    display_name: str               # Human-readable name
+
+    name: str  # Unique ID (e.g. "bank_to_ynab")
+    display_name: str  # Human-readable name
     description: str = ""
     version: str = "1.0.0"
-    icon: str = "⚡"               # Emoji or icon identifier
-    color: str = "#6366f1"          # Theme color (hex)
-    
+    icon: str = "⚡"  # Emoji or icon identifier
+    color: str = "#6366f1"  # Theme color (hex)
+
     triggers: list[TriggerConfig] = Field(default_factory=list)
     settings: list[SettingConfig] = Field(default_factory=list)
-    
+
     # Agent names (for display/documentation)
     agents: list[str] = Field(default_factory=list)
-    
+
     # Tags for filtering/categorization
     tags: list[str] = Field(default_factory=list)
-    
+
     # Is this workflow currently enabled?
     enabled: bool = True
 
 
 # ── Workflow Execution ───────────────────────────────────────────────
+
 
 class RunStatus(str, enum.Enum):
     PENDING = "pending"
@@ -107,6 +115,7 @@ class RunStatus(str, enum.Enum):
 
 class WorkflowResult(BaseModel):
     """Standard result from a workflow execution."""
+
     workflow_id: str
     status: RunStatus
     data: dict[str, Any] = Field(default_factory=dict)
@@ -117,6 +126,7 @@ class WorkflowResult(BaseModel):
 
 class WorkflowRun(BaseModel):
     """Record of a single workflow execution for history/audit."""
+
     id: str
     workflow_id: str
     status: RunStatus
@@ -131,6 +141,7 @@ class WorkflowRun(BaseModel):
 
 class WorkflowInfo(BaseModel):
     """Summary info for listing workflows."""
+
     name: str
     display_name: str
     description: str
@@ -147,6 +158,7 @@ class WorkflowInfo(BaseModel):
 
 # ── Pipeline Execution ───────────────────────────────────────────────
 
+
 class PipelineResult(BaseModel):
     """
     Structured result from a PipelineRunner execution.
@@ -155,6 +167,7 @@ class PipelineResult(BaseModel):
     Contains the raw final text, extracted JSON, final session state,
     and timing information.
     """
+
     session_id: str
     final_text: str
     parsed_json: dict[str, Any] = Field(default_factory=dict)
@@ -164,15 +177,18 @@ class PipelineResult(BaseModel):
 
 # ── Agent Cards (Declarative Agent Metadata) ─────────────────────────
 
+
 class AgentType(str, enum.Enum):
     """Type of agent implementation."""
-    LLM = "llm"           # LlmAgent — uses an LLM for reasoning
-    CODE = "code"          # Pure Python, zero LLM calls
-    CUSTOM = "custom"      # BaseAgent subclass (custom _run_async_impl)
+
+    LLM = "llm"  # LlmAgent — uses an LLM for reasoning
+    CODE = "code"  # Pure Python, zero LLM calls
+    CUSTOM = "custom"  # BaseAgent subclass (custom _run_async_impl)
 
 
 class AgentCardIO(BaseModel):
     """Input or output schema reference for an agent card."""
+
     schema_ref: str = Field(description="Pydantic model name (e.g., 'ParsedEmail')")
     fields: list[str] = Field(
         default_factory=list,
@@ -182,12 +198,14 @@ class AgentCardIO(BaseModel):
 
 class GuardrailConfig(BaseModel):
     """Guardrail (callback) configuration for an agent."""
+
     before_model: list[str] = Field(default_factory=list)
     after_model: list[str] = Field(default_factory=list)
 
 
 class ToolConfig(BaseModel):
     """Tool reference for an agent card."""
+
     name: str
     description: str = ""
 
@@ -201,6 +219,7 @@ class AgentCard(BaseModel):
 
     Compatible with Google A2A protocol for agent discovery.
     """
+
     name: str = Field(description="Unique agent identifier (e.g., 'email_parser')")
     display_name: str = Field(description="Human-readable name (e.g., 'Email Parser')")
     version: str = "1.0.0"
@@ -227,4 +246,3 @@ class AgentCard(BaseModel):
     )
 
     tags: list[str] = Field(default_factory=list)
-

@@ -4,6 +4,7 @@ from fastapi import Request
 
 from autopilot.observability import get_tracer
 
+
 async def otel_tracing_middleware(request: Request, call_next):
     """
     OpenTelemetry Tracing Middleware for FastAPI.
@@ -35,4 +36,6 @@ async def otel_tracing_middleware(request: Request, call_next):
             span.record_exception(e)
             raise
         finally:
-            span.set_attribute("http.latency_ms", round((time.monotonic() - start) * 1000))
+            span.set_attribute(
+                "http.latency_ms", round((time.monotonic() - start) * 1000)
+            )

@@ -39,12 +39,8 @@ from google.genai import types
 logger = structlog.get_logger(__name__)
 
 # Type aliases for ADK callbacks
-BeforeCallback = Callable[
-    [CallbackContext, LlmRequest], Optional[LlmResponse]
-]
-AfterCallback = Callable[
-    [CallbackContext, LlmResponse], Optional[LlmResponse]
-]
+BeforeCallback = Callable[[CallbackContext, LlmRequest], Optional[LlmResponse]]
+AfterCallback = Callable[[CallbackContext, LlmResponse], Optional[LlmResponse]]
 
 # ── Default injection patterns ────────────────────────────────────────
 DEFAULT_INJECTION_PATTERNS = [
@@ -72,6 +68,7 @@ def input_length_guard(
         min_chars: Minimum character count after stripping whitespace.
         message: Response message when input is rejected.
     """
+
     def _guard(
         callback_context: CallbackContext, llm_request: LlmRequest
     ) -> Optional[LlmResponse]:
@@ -131,7 +128,6 @@ def prompt_injection_guard(
     return _guard
 
 
-
 def uuid_format_guard(
     fields: tuple[str, ...] = ("budget_id", "account_id", "category_id"),
 ) -> AfterCallback:
@@ -141,8 +137,8 @@ def uuid_format_guard(
     Args:
         fields: JSON field names to check for valid UUID format.
     """
-    uuid_pattern = r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
-    field_pattern = '|'.join(re.escape(f) for f in fields)
+    uuid_pattern = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    field_pattern = "|".join(re.escape(f) for f in fields)
 
     def _guard(
         callback_context: CallbackContext, llm_response: LlmResponse
@@ -151,9 +147,7 @@ def uuid_format_guard(
         if not response_text:
             return None
 
-        id_fields = re.findall(
-            rf'"(?:{field_pattern})"\s*:\s*"([^"]+)"', response_text
-        )
+        id_fields = re.findall(rf'"(?:{field_pattern})"\s*:\s*"([^"]+)"', response_text)
         for field_value in id_fields:
             if field_value and not re.match(uuid_pattern, field_value):
                 logger.warning(
@@ -164,11 +158,13 @@ def uuid_format_guard(
                 return LlmResponse(
                     content=types.Content(
                         role="model",
-                        parts=[types.Part(
-                            text=f"⚠️ Invalid UUID detected: '{field_value}'. "
-                                 f"IDs must be real UUIDs from the API. "
-                                 f"Please call the appropriate tool to get a valid ID."
-                        )],
+                        parts=[
+                            types.Part(
+                                text=f"⚠️ Invalid UUID detected: '{field_value}'. "
+                                f"IDs must be real UUIDs from the API. "
+                                f"Please call the appropriate tool to get a valid ID."
+                            )
+                        ],
                     )
                 )
         return None
@@ -187,6 +183,7 @@ def amount_sanity_guard(
     Args:
         max_amount: Maximum allowed absolute amount (required).
     """
+
     def _guard(
         callback_context: CallbackContext, llm_response: LlmResponse
     ) -> Optional[LlmResponse]:
@@ -207,10 +204,12 @@ def amount_sanity_guard(
                 return LlmResponse(
                     content=types.Content(
                         role="model",
-                        parts=[types.Part(
-                            text=f"⚠️ Transaction amount ${amount:,.0f} exceeds the safety limit of "
-                                 f"${max_amount:,.0f}. Please verify this is correct."
-                        )],
+                        parts=[
+                            types.Part(
+                                text=f"⚠️ Transaction amount ${amount:,.0f} exceeds the safety limit of "
+                                f"${max_amount:,.0f}. Please verify this is correct."
+                            )
+                        ],
                     )
                 )
         return None

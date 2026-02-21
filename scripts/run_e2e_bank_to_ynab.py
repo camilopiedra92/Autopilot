@@ -23,6 +23,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 # ── Structured logging config ────────────────────────────────────────
@@ -83,9 +84,13 @@ def print_kv(key: str, value, indent: int = 2):
         print(f"{prefix}{DIM}{key}:{RESET} {value}")
 
 
-def print_step_result(step_name: str, step_num: int, total: int, duration_ms: float, output_keys: list):
+def print_step_result(
+    step_name: str, step_num: int, total: int, duration_ms: float, output_keys: list
+):
     status = f"{CHECK}" if output_keys else f"{YELLOW}⏭️{RESET}"
-    print(f"  {status} {BOLD}Step {step_num}/{total}{RESET}: {CYAN}{step_name}{RESET} {DIM}({duration_ms:.0f}ms){RESET}")
+    print(
+        f"  {status} {BOLD}Step {step_num}/{total}{RESET}: {CYAN}{step_name}{RESET} {DIM}({duration_ms:.0f}ms){RESET}"
+    )
     if output_keys:
         print(f"      {DIM}{ARROW} Output keys: {', '.join(output_keys)}{RESET}")
 
@@ -112,7 +117,9 @@ async def run_e2e(email_text: str, auto_create: bool = True):
     # ── Status ───────────────────────────────────────────────────────
     status_color = GREEN if result.status.value == "success" else RED
     status_icon = CHECK if result.status.value == "success" else CROSS
-    print(f"\n  {status_icon} {BOLD}{status_color}Status: {result.status.value.upper()}{RESET} {DIM}({elapsed:.0f}ms total){RESET}")
+    print(
+        f"\n  {status_icon} {BOLD}{status_color}Status: {result.status.value.upper()}{RESET} {DIM}({elapsed:.0f}ms total){RESET}"
+    )
 
     if result.error:
         print(f"\n  {RED}Error: {result.error}{RESET}")
@@ -145,8 +152,14 @@ async def run_e2e(email_text: str, auto_create: bool = True):
         print_section("Stage 2 — Account Matcher")
         if isinstance(matched, str):
             matched = json.loads(matched)
-        print_kv("Budget", f"{matched.get('budget_name')} ({matched.get('budget_id', '')[:8]}...)")
-        print_kv("Account", f"{matched.get('account_name')} ({matched.get('account_id', '')[:8]}...)")
+        print_kv(
+            "Budget",
+            f"{matched.get('budget_name')} ({matched.get('budget_id', '')[:8]}...)",
+        )
+        print_kv(
+            "Account",
+            f"{matched.get('account_name')} ({matched.get('account_id', '')[:8]}...)",
+        )
         print_kv("Confidence", matched.get("match_confidence"))
         print_kv("Reasoning", matched.get("match_reasoning"))
 
@@ -202,7 +215,9 @@ async def run_e2e(email_text: str, auto_create: bool = True):
             print_kv("Activity", f"COP {balance.get('activity', 0):,.0f}")
             print_kv("Balance", f"COP {balance.get('balance', 0):,.0f}")
             is_overspent = balance.get("is_overspent", False)
-            overspent_str = f"{RED}YES ⚠️{RESET}" if is_overspent else f"{GREEN}No{RESET}"
+            overspent_str = (
+                f"{RED}YES ⚠️{RESET}" if is_overspent else f"{GREEN}No{RESET}"
+            )
             print(f"  {DIM}Overspent:{RESET} {overspent_str}")
 
         if final.get("overspending_warning"):
@@ -218,7 +233,9 @@ async def run_e2e(email_text: str, auto_create: bool = True):
     print_header("E2E Complete")
     print(f"  Total time: {BOLD}{elapsed:,.0f}ms{RESET}")
     print(f"  Steps:      {BOLD}{len(steps)}{RESET}")
-    print(f"  Status:     {status_icon} {BOLD}{status_color}{result.status.value.upper()}{RESET}")
+    print(
+        f"  Status:     {status_icon} {BOLD}{status_color}{result.status.value.upper()}{RESET}"
+    )
     print()
 
 

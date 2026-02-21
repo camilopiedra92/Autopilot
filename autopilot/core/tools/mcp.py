@@ -80,7 +80,9 @@ class MCPBridge:
 
         try:
             from google.adk.tools.mcp_tool import McpToolset
-            from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams
+            from google.adk.tools.mcp_tool.mcp_session_manager import (
+                StdioConnectionParams,
+            )
             from mcp import StdioServerParameters
         except ImportError as e:
             raise MCPBridgeError(

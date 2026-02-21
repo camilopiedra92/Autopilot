@@ -19,7 +19,12 @@ import os
 import time
 import structlog
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 
 from autopilot.connectors.base_connector import BaseConnector
 
@@ -30,10 +35,14 @@ YNAB_API_URL = "https://api.ynab.com/v1"
 
 # ── Exceptions ───────────────────────────────────────────────────────
 
-from autopilot.errors import ConnectorError as YNABError, ConnectorRateLimitError as YNABRateLimitError
+from autopilot.errors import (
+    ConnectorError as YNABError,
+    ConnectorRateLimitError as YNABRateLimitError,
+)
 
 
 # ── TTL Cache ────────────────────────────────────────────────────────
+
 
 class TTLCache:
     """Simple thread-safe TTL cache for YNAB data."""
@@ -61,6 +70,7 @@ class TTLCache:
 
 
 # ── Async YNAB Client ────────────────────────────────────────────────
+
 
 class AsyncYNABClient:
     """
@@ -108,9 +118,14 @@ class AsyncYNABClient:
             logger.warning("ynab_rate_limited", path=path, latency_ms=round(latency_ms))
             raise YNABRateLimitError("Rate limit exceeded")
         if resp.status_code == 401:
-            raise YNABError("Authentication failed — check your access token", detail="401")
+            raise YNABError(
+                "Authentication failed — check your access token", detail="401"
+            )
         if resp.status_code >= 400:
-            raise YNABError(f"API error: {resp.status_code} — {resp.text}", detail=str(resp.status_code))
+            raise YNABError(
+                f"API error: {resp.status_code} — {resp.text}",
+                detail=str(resp.status_code),
+            )
 
         logger.debug(
             "ynab_request",
@@ -140,7 +155,9 @@ class AsyncYNABClient:
             return cached
 
         data = await self._request("GET", f"/budgets/{budget_id}/accounts")
-        accounts = [a for a in data["data"]["accounts"] if not a["closed"] and not a["deleted"]]
+        accounts = [
+            a for a in data["data"]["accounts"] if not a["closed"] and not a["deleted"]
+        ]
         self._accounts_cache.set(f"accounts:{budget_id}", accounts)
         logger.info("ynab_accounts_fetched", budget_id=budget_id, count=len(accounts))
         return accounts
@@ -184,7 +201,9 @@ class AsyncYNABClient:
                 categories.append({**cat, "_group_name": group["name"]})
 
         self._categories_cache.set(f"categories:{budget_id}", categories)
-        logger.info("ynab_categories_fetched", budget_id=budget_id, count=len(categories))
+        logger.info(
+            "ynab_categories_fetched", budget_id=budget_id, count=len(categories)
+        )
         return categories
 
     async def get_categories_string(self, budget_id: str) -> str:
@@ -230,7 +249,9 @@ class AsyncYNABClient:
         wait=wait_exponential(multiplier=1, min=2, max=30),
         retry=retry_if_exception_type(YNABRateLimitError),
     )
-    async def create_transaction(self, budget_id: str, transaction_payload: dict) -> dict:
+    async def create_transaction(
+        self, budget_id: str, transaction_payload: dict
+    ) -> dict:
         """Create a transaction in YNAB."""
         logger.info(
             "ynab_creating_transaction",
@@ -243,7 +264,9 @@ class AsyncYNABClient:
             f"/budgets/{budget_id}/transactions",
             json={"transaction": transaction_payload},
         )
-        logger.info("ynab_transaction_created", transaction_id=data["data"]["transaction"]["id"])
+        logger.info(
+            "ynab_transaction_created", transaction_id=data["data"]["transaction"]["id"]
+        )
         return data
 
     async def get_recent_transactions(
@@ -263,6 +286,7 @@ class AsyncYNABClient:
 
 
 # ── Connector ────────────────────────────────────────────────────────
+
 
 class YNABConnector(BaseConnector):
     """

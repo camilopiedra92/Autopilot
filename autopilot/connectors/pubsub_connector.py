@@ -32,6 +32,7 @@ logger = structlog.get_logger(__name__)
 @dataclass(frozen=True)
 class _PubSubConfig:
     """Platform-level PubSub configuration, read from environment."""
+
     gcp_pubsub_topic: str = ""
     gmail_sender_filter: str = ""
     gmail_push_label_names: list[str] = field(default_factory=list)
@@ -39,7 +40,9 @@ class _PubSubConfig:
     @classmethod
     def from_env(cls) -> "_PubSubConfig":
         label_raw = os.environ.get("GMAIL_PUSH_LABEL_NAMES", "")
-        labels = [l.strip() for l in label_raw.split(",") if l.strip()] if label_raw else []
+        labels = (
+            [l.strip() for l in label_raw.split(",") if l.strip()] if label_raw else []
+        )
         return cls(
             gcp_pubsub_topic=os.environ.get("GCP_PUBSUB_TOPIC", ""),
             gmail_sender_filter=os.environ.get("GMAIL_SENDER_FILTER", ""),
@@ -118,8 +121,7 @@ class PubSubConnector(BaseConnector):
             "expiration": str(self.watch_expiration) if self.watch_expiration else None,
             "expiration_epoch_ms": self._watch_expiration,
             "renewal_task_alive": (
-                self._renewal_task is not None
-                and not self._renewal_task.done()
+                self._renewal_task is not None and not self._renewal_task.done()
             ),
         }
 
@@ -133,9 +135,12 @@ class PubSubConnector(BaseConnector):
         it hasn't expired while the instance was scaled to zero.
         """
         from autopilot.connectors import get_connector_registry
+
         try:
             gmail = get_connector_registry().get("gmail")
-            logger.info("pubsub_setup_cold_start", reason="re-registering watch on startup")
+            logger.info(
+                "pubsub_setup_cold_start", reason="re-registering watch on startup"
+            )
             await self.start_watching(gmail)
         except Exception as e:
             logger.error("pubsub_setup_failed", error=str(e))
@@ -158,14 +163,14 @@ class PubSubConnector(BaseConnector):
         # Dynamically aggregate label names from ALL registered workflows
         from autopilot.registry import get_registry
         from autopilot.models import TriggerType
-        
+
         registry = get_registry()
         required_label_names = set()
-        
+
         # 1. Add labels from settings (global overrides)
         if self._settings.gmail_push_label_names:
-             required_label_names.update(self._settings.gmail_push_label_names)
-             
+            required_label_names.update(self._settings.gmail_push_label_names)
+
         # 2. Add labels from all enabled workflows
         for wf in registry.get_all_workflows():
             if not wf.manifest.enabled:
@@ -173,16 +178,16 @@ class PubSubConnector(BaseConnector):
             for trigger in wf.manifest.triggers:
                 # If trigger has specific label_ids (names in manifest), add them
                 # Note: Manifest triggers usually define 'label_ids' as a list of strings (names or IDs).
-                # We assume they are NAMES here because we resolve them below. 
+                # We assume they are NAMES here because we resolve them below.
                 # If they are IDs (like "INBOX"), resolve_label_ids handles them (it queries by name).
                 # Wait, "INBOX" is an ID. "IMPORTANT" is an ID. User labels are names.
-                # resolve_label_ids maps Name -> ID. 
+                # resolve_label_ids maps Name -> ID.
                 # If a workflow uses "INBOX", we should probably just use it directly.
                 # unique standard IDs: INBOX, SPAM, TRASH, UNREAD, STARRED, IMPORTANT, SENT, DRAFT.
                 # anything else is a user label name.
                 if trigger.type == TriggerType.GMAIL_PUSH and trigger.label_ids:
                     required_label_names.update(trigger.label_ids)
-        
+
         if required_label_names:
             self._resolved_label_ids = await asyncio.to_thread(
                 self._gmail.resolve_label_ids,
@@ -195,7 +200,9 @@ class PubSubConnector(BaseConnector):
                 ids=self._resolved_label_ids,
             )
 
-        logger.info("pubsub_starting", topic=topic, label_filter=self._resolved_label_ids)
+        logger.info(
+            "pubsub_starting", topic=topic, label_filter=self._resolved_label_ids
+        )
 
         # Register initial watch
         await self._register_watch()
@@ -282,9 +289,11 @@ class PubSubConnector(BaseConnector):
 
         try:
             response = await asyncio.to_thread(
-                lambda: self._gmail.service.users()
-                .watch(userId="me", body=request_body)
-                .execute()
+                lambda: (
+                    self._gmail.service.users()
+                    .watch(userId="me", body=request_body)
+                    .execute()
+                )
             )
         except Exception as e:
             error_msg = str(e)
@@ -297,9 +306,11 @@ class PubSubConnector(BaseConnector):
                 await asyncio.to_thread(self._stop_watch)
                 try:
                     response = await asyncio.to_thread(
-                        lambda: self._gmail.service.users()
-                        .watch(userId="me", body=request_body)
-                        .execute()
+                        lambda: (
+                            self._gmail.service.users()
+                            .watch(userId="me", body=request_body)
+                            .execute()
+                        )
                     )
                 except Exception as retry_e:
                     logger.error(
@@ -436,13 +447,13 @@ class PubSubConnector(BaseConnector):
         emails = []
         for msg_id in message_ids:
             try:
-                email = await asyncio.to_thread(
-                    self._fetch_message_detail, msg_id
-                )
+                email = await asyncio.to_thread(self._fetch_message_detail, msg_id)
                 if email and email.get("from", "").lower().find(sender_filter) >= 0:
                     emails.append(email)
             except Exception as e:
-                logger.error("pubsub_message_fetch_failed", message_id=msg_id, error=str(e))
+                logger.error(
+                    "pubsub_message_fetch_failed", message_id=msg_id, error=str(e)
+                )
 
         return emails
 
@@ -460,12 +471,7 @@ class PubSubConnector(BaseConnector):
             if page_token:
                 params["pageToken"] = page_token
 
-            response = (
-                self._gmail.service.users()
-                .history()
-                .list(**params)
-                .execute()
-            )
+            response = self._gmail.service.users().history().list(**params).execute()
 
             records = response.get("history", [])
             all_records.extend(records)

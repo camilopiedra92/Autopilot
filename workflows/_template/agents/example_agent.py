@@ -11,6 +11,7 @@ DO NOT use `LlmAgent(...)` directly.
 from google.adk.agents import BaseAgent
 from autopilot.agents.base import create_platform_agent
 
+
 def create_example_agent() -> BaseAgent:
     """Creates the example agent with platform defaults."""
     return create_platform_agent(

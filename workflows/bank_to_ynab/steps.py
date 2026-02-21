@@ -36,10 +36,8 @@ _UUID_RE = re.compile(
 )
 
 
-
-
-
 # ── Account Mappings (loaded once, O(1) lookup) ─────────────────────
+
 
 def _load_account_mappings() -> list[AccountMapping]:
     """Load account mappings from the workflow data directory."""
@@ -57,13 +55,15 @@ def _load_account_mappings() -> list[AccountMapping]:
             account_map = budget_data.get("accountMap", {})
 
             for card_suffix, account_id in account_map.items():
-                flat_mappings.append(AccountMapping(
-                    card_suffix=card_suffix,
-                    budget_id=budget_id,
-                    budget_name=budget_key.capitalize(),
-                    account_id=account_id,
-                    account_name=f"{budget_key.capitalize()} ({card_suffix})",
-                ))
+                flat_mappings.append(
+                    AccountMapping(
+                        card_suffix=card_suffix,
+                        budget_id=budget_id,
+                        budget_name=budget_key.capitalize(),
+                        account_id=account_id,
+                        account_name=f"{budget_key.capitalize()} ({card_suffix})",
+                    )
+                )
         return flat_mappings
     except Exception as e:
         logger.error("account_mappings_load_failed", error=str(e))
@@ -85,6 +85,7 @@ def lookup_account_by_card(card_suffix: str) -> AccountMapping | None:
 
 # ── Step: HTML sanitizer ─────────────────────────────────────────────
 
+
 def sanitize_email_html(html: str) -> str:
     """
     Aggressively strip HTML to get clean text from Bancolombia emails.
@@ -93,7 +94,9 @@ def sanitize_email_html(html: str) -> str:
     try:
         from bs4 import BeautifulSoup
     except ImportError:
-        logger.warning("beautifulsoup4_not_installed", detail="Falling back to simple stripping")
+        logger.warning(
+            "beautifulsoup4_not_installed", detail="Falling back to simple stripping"
+        )
         return re.sub(r"<[^>]+>", " ", html).strip()
 
     # Skip BS4 for plain text (no HTML tags or entities) — avoids MarkupResemblesLocatorWarning
@@ -120,17 +123,19 @@ def sanitize_email_html(html: str) -> str:
 
 # ── Step 1: Prepare parser prompt ────────────────────────────────────
 
+
 def format_parser_prompt(**state) -> dict:
     """Prepare the prompt for the email parser agent using raw payload data."""
     email_body = state.get("body", "")
     if not email_body:
         raise ValueError("No email body provided")
-        
+
     clean = sanitize_email_html(email_body)
     return {"message": f"Parse this bank email:\n\n{clean}"}
 
 
 # ── Step 2: Deterministic account matching (code, 0 LLM calls) ──────
+
 
 def match_account(parsed_email: ParsedEmail) -> dict:
     """
@@ -141,7 +146,7 @@ def match_account(parsed_email: ParsedEmail) -> dict:
     """
     # Sanitize: keep only alphanumeric characters to handle '*7644' or ' 7644 '
     card_suffix = re.sub(r"[^a-zA-Z0-9]", "", parsed_email.card_suffix)
-        
+
     mapping = lookup_account_by_card(card_suffix)
 
     if mapping:
@@ -175,6 +180,7 @@ def match_account(parsed_email: ParsedEmail) -> dict:
 
 # ── Step 3: Prepare researcher context ──────────────────────────────
 
+
 def format_researcher_input(parsed_email: ParsedEmail) -> dict:
     """Prepare raw payee for the Web Researcher."""
     return {"payee": parsed_email.payee}
@@ -182,27 +188,32 @@ def format_researcher_input(parsed_email: ParsedEmail) -> dict:
 
 # ── Step 4: Prepare categorizer context ──────────────────────────────
 
-def format_categorizer_input(parsed_email: ParsedEmail, enriched_payee: EnrichedPayee | None = None) -> dict:
+
+def format_categorizer_input(
+    parsed_email: ParsedEmail, enriched_payee: EnrichedPayee | None = None
+) -> dict:
     """Ensure categorizer has the right message in state and uses enriched name if available."""
     # We pass the clean name so the categorizer has a much easier job
     payee = enriched_payee.clean_name if enriched_payee else parsed_email.payee
-    
+
     msg_parts = [f"Categorize this transaction for merchant: {payee}"]
-    
+
     # Add more context from the web researcher to help with categorization
     if enriched_payee:
         if enriched_payee.establishment_type:
-            msg_parts.append(f"Type of establishment: {enriched_payee.establishment_type}")
+            msg_parts.append(
+                f"Type of establishment: {enriched_payee.establishment_type}"
+            )
         if enriched_payee.website:
             msg_parts.append(f"Website: {enriched_payee.website}")
         if enriched_payee.location:
             msg_parts.append(f"Location: {enriched_payee.location}")
-            
+
     return {"message": "\n".join(msg_parts)}
 
 
-
 # ── Step 4: Synthesize + Validate (deterministic, 0 LLM calls) ──────
+
 
 def synthesize_transaction(
     parsed_email: ParsedEmail,
@@ -216,20 +227,26 @@ def synthesize_transaction(
     Reads from accumulated pipeline state, reconstructs typed models,
     performs quality checks, and returns the Transaction as a dict.
     """
-        
+
     # Memo left empty — payee + account already convey all useful info.
     # parsed_email.memo is just a bank card reference (redundant with account).
     final_memo = ""
 
     # Determine final enriched name / details
-    final_payee_name = enriched_payee.clean_name if enriched_payee else parsed_email.payee
-    establishment_type = (enriched_payee.establishment_type or "Unknown") if enriched_payee else "Unknown"
+    final_payee_name = (
+        enriched_payee.clean_name if enriched_payee else parsed_email.payee
+    )
+    establishment_type = (
+        (enriched_payee.establishment_type or "Unknown")
+        if enriched_payee
+        else "Unknown"
+    )
     website = (enriched_payee.website or "") if enriched_payee else ""
     location = (enriched_payee.location or "") if enriched_payee else ""
 
     transaction = Transaction(
         date=parsed_email.date,
-        payee=final_payee_name, # We map the clean, resolved entity name to YNAB
+        payee=final_payee_name,  # We map the clean, resolved entity name to YNAB
         amount=parsed_email.amount,
         memo=final_memo,
         is_successful=parsed_email.is_successful,
@@ -249,6 +266,7 @@ def synthesize_transaction(
 
 
 # ── Step 5: Push to YNAB (if auto_create) ───────────────────────────
+
 
 async def push_to_ynab(**state) -> dict:
     """
@@ -317,9 +335,7 @@ async def push_to_ynab(**state) -> dict:
             },
         )
         result_data["ynab_transaction_id"] = (
-            ynab_result.get("data", {})
-            .get("transaction", {})
-            .get("id")
+            ynab_result.get("data", {}).get("transaction", {}).get("id")
         )
         result_data["created_in_ynab"] = True
 
@@ -373,10 +389,7 @@ async def _fetch_category_balance(
     warning = ""
     if cat_balance.is_overspent:
         overspent_amount = abs(cat_balance.balance)
-        warning = (
-            f"⚠️ OVERSPENDING: {cat_name} is "
-            f"${overspent_amount:,.0f} over budget"
-        )
+        warning = f"⚠️ OVERSPENDING: {cat_name} is ${overspent_amount:,.0f} over budget"
         logger.warning(
             "category_overspent",
             category=cat_name,
@@ -400,6 +413,7 @@ async def _fetch_category_balance(
 
 
 # ── Step 6: Format input for Telegram notifier agent ────────────────
+
 
 def format_notifier_input(**state) -> dict:
     """

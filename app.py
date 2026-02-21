@@ -54,6 +54,7 @@ async def lifespan(app: FastAPI):
 
     # 1.5 Auto-expose connector methods as platform tools
     from autopilot.core.tools import register_all_connector_tools
+
     try:
         register_all_connector_tools(connector_registry)
     except Exception as e:
@@ -116,7 +117,9 @@ app = FastAPI(
 )
 
 cors_origins_str = os.getenv("API_CORS_ORIGINS", "*")
-allowed_origins = [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]
+allowed_origins = [
+    origin.strip() for origin in cors_origins_str.split(",") if origin.strip()
+]
 
 app.add_middleware(
     CORSMiddleware,
@@ -131,10 +134,12 @@ app.add_exception_handler(AutoPilotError, autopilot_error_handler)
 
 # Mount webhooks
 from autopilot.api.webhooks import router as webhooks_router
+
 app.include_router(webhooks_router)
 
 # Mount generic platform routes (health, metrics, root)
 from autopilot.api.system import router as system_router
+
 app.include_router(system_router)
 
 # Mount versioned API routes
@@ -145,8 +150,6 @@ app.include_router(v1_router)
 from autopilot.api.middleware import otel_tracing_middleware
 
 app.add_middleware(BaseHTTPMiddleware, dispatch=otel_tracing_middleware)
-
-
 
 
 if __name__ == "__main__":

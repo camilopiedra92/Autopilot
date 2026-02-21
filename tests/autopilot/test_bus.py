@@ -152,7 +152,9 @@ class TestPubSub:
     @pytest.mark.asyncio
     async def test_publish_returns_message(self, bus):
         """publish() returns the AgentMessage that was created."""
-        msg = await bus.publish("test", {"key": "val"}, sender="s", correlation_id="cid")
+        msg = await bus.publish(
+            "test", {"key": "val"}, sender="s", correlation_id="cid"
+        )
         assert msg.topic == "test"
         assert msg.payload == {"key": "val"}
         assert msg.sender == "s"
@@ -464,11 +466,13 @@ class TestE2EAgentCommunication:
         alerts = []
 
         async def monitor_handler(msg: AgentMessage):
-            alerts.append({
-                "from": msg.sender,
-                "error": msg.payload.get("error"),
-                "topic": msg.topic,
-            })
+            alerts.append(
+                {
+                    "from": msg.sender,
+                    "error": msg.payload.get("error"),
+                    "topic": msg.topic,
+                }
+            )
 
         bus.subscribe("agent.*", monitor_handler)
 
@@ -494,6 +498,7 @@ class TestE2EAgentCommunication:
     @pytest.mark.asyncio
     async def test_stats_tracking(self, bus):
         """Stats accurately track published, delivered, and errors."""
+
         async def good(msg):
             pass
 
@@ -508,4 +513,4 @@ class TestE2EAgentCommunication:
 
         assert bus.stats["published"] == 2
         assert bus.stats["delivered"] == 2  # 1 good per publish
-        assert bus.stats["errors"] == 2     # 1 bad per publish
+        assert bus.stats["errors"] == 2  # 1 bad per publish

@@ -56,7 +56,7 @@ RULES:
 
 def create_email_parser(model_name: str = "gemini-3-flash-preview") -> LlmAgent:
     """Creates the email parser agent with typed output via output_key + output_schema.
-    
+
     Guardrails:
       - before_model: input_length_guard + prompt_injection_guard (platform)
       - after_model: amount_sanity_guard (workflow, 50M COP) + uuid_format_guard (platform)
@@ -77,6 +77,6 @@ def create_email_parser(model_name: str = "gemini-3-flash-preview") -> LlmAgent:
         ),
         after_model_callback=create_chained_after_callback(
             amount_sanity_guard(max_amount=50_000_000),  # 50M COP limit
-            uuid_format_guard(),     # Platform: UUID format validation
+            uuid_format_guard(),  # Platform: UUID format validation
         ),
     )

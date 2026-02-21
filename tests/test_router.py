@@ -1,8 +1,8 @@
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from autopilot.router import WorkflowRouter
 from autopilot.models import TriggerType
+
 
 @pytest.mark.asyncio
 class TestWorkflowRouterLogic:
@@ -11,10 +11,10 @@ class TestWorkflowRouterLogic:
         workflow = AsyncMock()
         workflow.manifest.name = "test_wf"
         registry.find_by_webhook_path.return_value = workflow
-        
+
         router = WorkflowRouter(registry)
         await router.route_webhook("/test-path", {"body": "foo"})
-        
+
         registry.find_by_webhook_path.assert_called_with("/test-path")
         workflow.run.assert_awaited_with(TriggerType.WEBHOOK, {"body": "foo"})
 
@@ -22,9 +22,9 @@ class TestWorkflowRouterLogic:
         registry = MagicMock()
         # Ensure it returns None
         registry.find_by_webhook_path.return_value = None
-        
+
         router = WorkflowRouter(registry)
-        
+
         with pytest.raises(KeyError):
             await router.route_webhook("/unknown", {})
 
@@ -33,10 +33,10 @@ class TestWorkflowRouterLogic:
         workflow = AsyncMock()
         workflow.manifest.enabled = True
         registry.get_or_raise.return_value = workflow
-        
+
         router = WorkflowRouter(registry)
         await router.route_manual("wf-id", {"data": 123})
-        
+
         registry.get_or_raise.assert_called_with("wf-id")
         workflow.run.assert_awaited_with(TriggerType.MANUAL, {"data": 123})
 
@@ -74,5 +74,3 @@ class TestWorkflowRouterLogic:
         assert len(results) == 2
         assert wf1.run.await_count == 1
         assert wf2.run.await_count == 1
-
-

@@ -22,12 +22,15 @@ from unittest.mock import MagicMock, AsyncMock
 # Load .env FIRST so real keys are available for integration tests,
 # then set fallback defaults for CI (where no .env exists).
 from dotenv import load_dotenv
+
 load_dotenv()
+
 
 @pytest.fixture(autouse=True)
 def mock_env(monkeypatch):
     """Set default environment variables only when real keys are not present."""
     import os
+
     if not os.environ.get("GOOGLE_API_KEY"):
         monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     if not os.environ.get("GOOGLE_GENAI_API_KEY"):
@@ -82,7 +85,9 @@ def sample_categorized_tx():
 
 
 @pytest.fixture
-def sample_transaction(sample_parsed_email, sample_matched_account, sample_categorized_tx):
+def sample_transaction(
+    sample_parsed_email, sample_matched_account, sample_categorized_tx
+):
     """A complete Transaction fixture, merging all pipeline stage outputs."""
     from workflows.bank_to_ynab.models import Transaction
 
@@ -189,9 +194,9 @@ def mock_ynab_client():
         return_value={
             "id": "c1d2e3f4-a5b6-7890-abcd-ef1122334455",
             "name": "Dining Out",
-            "budgeted": 500000,    # 500 currency units in milliunits
-            "activity": -320000,   # -320 currency units spent
-            "balance": 180000,     # 180 currency units remaining
+            "budgeted": 500000,  # 500 currency units in milliunits
+            "activity": -320000,  # -320 currency units spent
+            "balance": 180000,  # 180 currency units remaining
             "goal_target": None,
             "hidden": False,
             "deleted": False,
@@ -200,9 +205,6 @@ def mock_ynab_client():
     client.get_recent_transactions = AsyncMock(return_value=[])
     client.close = AsyncMock()
     return client
-
-
-
 
 
 # ── Callback Context Factories ───────────────────────────────────────

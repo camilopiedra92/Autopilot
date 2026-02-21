@@ -179,6 +179,7 @@ class DSLWorkflowDef(BaseModel):
         strategy = info.data.get("strategy")
         if strategy == DSLStrategy.SEQUENTIAL and (v is None or len(v) == 0):
             from autopilot.errors import DSLValidationError
+
             raise DSLValidationError(
                 "Strategy 'sequential' requires at least one step.",
                 field="steps",
@@ -192,6 +193,7 @@ class DSLWorkflowDef(BaseModel):
         strategy = info.data.get("strategy")
         if strategy == DSLStrategy.DAG and (v is None or len(v) == 0):
             from autopilot.errors import DSLValidationError
+
             raise DSLValidationError(
                 "Strategy 'dag' requires at least one node.",
                 field="nodes",

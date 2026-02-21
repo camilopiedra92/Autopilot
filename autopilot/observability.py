@@ -44,12 +44,18 @@ def setup_tracing(
     global _tracer
 
     from autopilot.version import VERSION
-    resource = Resource.create({"service.name": service_name, "service.version": VERSION})
+
+    resource = Resource.create(
+        {"service.name": service_name, "service.version": VERSION}
+    )
     provider = TracerProvider(resource=resource)
 
     if otlp_endpoint:
         try:
-            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+                OTLPSpanExporter,
+            )
+
             exporter = OTLPSpanExporter(endpoint=otlp_endpoint)
             provider.add_span_processor(BatchSpanProcessor(exporter))
             logger.info("otel_otlp_configured", endpoint=otlp_endpoint)
@@ -75,7 +81,9 @@ def get_tracer() -> trace.Tracer:
 
 
 @contextmanager
-def trace_agent_stage(stage_name: str, pipeline_name: str = "autopilot", **attributes) -> Generator:
+def trace_agent_stage(
+    stage_name: str, pipeline_name: str = "autopilot", **attributes
+) -> Generator:
     """
     Context manager to trace an agent pipeline stage.
 
@@ -126,6 +134,7 @@ AGENT_LATENCY = Histogram(
 
 # ── Metric Factories ─────────────────────────────────────────────────
 
+
 def create_pipeline_metrics(namespace: str) -> tuple[Counter, Histogram]:
     """
     Create standard pipeline execution metrics.
@@ -151,7 +160,9 @@ def create_pipeline_metrics(namespace: str) -> tuple[Counter, Histogram]:
     return requests, latency
 
 
-def create_connector_metrics(namespace: str, connector_name: str) -> tuple[Counter, Histogram]:
+def create_connector_metrics(
+    namespace: str, connector_name: str
+) -> tuple[Counter, Histogram]:
     """
     Create standard connector/API metrics.
 
@@ -177,7 +188,9 @@ def create_connector_metrics(namespace: str, connector_name: str) -> tuple[Count
     )
     return requests, latency
 
+
 # ── Prometheus Scraping ──────────────────────────────────────────────
+
 
 def get_metrics() -> bytes:
     """Generate Prometheus metrics for scraping."""

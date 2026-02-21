@@ -9,10 +9,11 @@ from typing import Any
 from autopilot.agents.base import create_platform_agent
 from workflows.bank_to_ynab.models.transaction import EnrichedPayee
 
+
 def create_researcher(**kwargs: Any) -> Any:
     """
     Creates the Web Researcher agent using the platform factory.
-    
+
     The agent uses the declarative configuration in researcher.agent.yaml
     and strictly returns an EnrichedPayee model.
     """
@@ -37,5 +38,5 @@ def create_researcher(**kwargs: Any) -> Any:
             "Always be as precise as possible."
         ),
         tools=["search_web"],
-        **kwargs
+        **kwargs,
     )

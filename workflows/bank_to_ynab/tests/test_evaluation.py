@@ -34,6 +34,7 @@ class TestHTMLSanitizerEdgeCases:
 
     def _sanitize(self, html: str) -> str:
         from workflows.bank_to_ynab.steps import sanitize_email_html
+
         return sanitize_email_html(html)
 
     def test_empty_string(self):
@@ -281,8 +282,6 @@ class TestModelEdgeCases:
 class TestPipelineConstructionEval:
     """Validates that the pipeline is assembled correctly."""
 
-
-
     def test_email_parser_output_schema(self):
         """Email parser should produce ParsedEmail schema."""
         from workflows.bank_to_ynab.agents.email_parser import create_email_parser
@@ -290,7 +289,6 @@ class TestPipelineConstructionEval:
 
         parser = create_email_parser()
         assert parser.output_schema == ParsedEmail
-
 
     def test_categorizer_output_schema(self):
         """Categorizer should produce CategorizedTransaction schema."""
@@ -311,6 +309,7 @@ class TestJSONExtractionEdgeCases:
 
     def _extract(self, text: str) -> dict:
         from autopilot.agents import extract_json
+
         return extract_json(text)
 
     def test_json_with_trailing_comma_in_text(self):
@@ -324,7 +323,9 @@ class TestJSONExtractionEdgeCases:
         assert result["date"] == "2026-01-01"
 
     def test_json_with_preceding_text(self):
-        text = 'Here is the parsed transaction:\n\n{"payee": "Netflix", "amount": -39900}'
+        text = (
+            'Here is the parsed transaction:\n\n{"payee": "Netflix", "amount": -39900}'
+        )
         result = self._extract(text)
         assert result["payee"] == "Netflix"
 
@@ -377,14 +378,16 @@ class TestJSONExtractionEdgeCases:
 
 class TestGuardrailsDeep:
     """Deep testing of guardrail callbacks with mocked ADK objects.
-    
+
     Platform guards: input_length_guard, prompt_injection_guard, uuid_format_guard
     Workflow guards: amount_sanity_guard (COP-specific)
     """
 
     # ── Input Length Guard (Platform) ─────────────────────────────
 
-    def test_input_length_guard_boundary_length(self, make_callback_context, make_llm_request):
+    def test_input_length_guard_boundary_length(
+        self, make_callback_context, make_llm_request
+    ):
         """Exactly 10 chars should pass (boundary test)."""
         from autopilot.agents.guardrails import input_length_guard
 
@@ -394,7 +397,9 @@ class TestGuardrailsDeep:
         result = guard(ctx, req)
         assert result is None  # Should pass
 
-    def test_input_length_guard_9_chars_blocked(self, make_callback_context, make_llm_request):
+    def test_input_length_guard_9_chars_blocked(
+        self, make_callback_context, make_llm_request
+    ):
         """9 chars should be blocked."""
         from autopilot.agents.guardrails import input_length_guard
 
@@ -406,7 +411,9 @@ class TestGuardrailsDeep:
 
     # ── Prompt Injection Guard (Platform) ─────────────────────────
 
-    def test_injection_guard_all_patterns(self, make_callback_context, make_llm_request):
+    def test_injection_guard_all_patterns(
+        self, make_callback_context, make_llm_request
+    ):
         """All injection patterns should be detected."""
         from autopilot.agents.guardrails import prompt_injection_guard
 
@@ -424,7 +431,9 @@ class TestGuardrailsDeep:
             result = guard(ctx, req)
             assert result is not None, f"Should block: '{text}'"
 
-    def test_injection_guard_safe_spanish_text(self, make_callback_context, make_llm_request):
+    def test_injection_guard_safe_spanish_text(
+        self, make_callback_context, make_llm_request
+    ):
         """Normal Spanish email content should pass."""
         from autopilot.agents.guardrails import prompt_injection_guard
 
@@ -454,9 +463,7 @@ class TestGuardrailsDeep:
         result = guard(ctx, resp)
         assert result is None
 
-    def test_amount_guard_at_limit(
-        self, make_callback_context, make_llm_response
-    ):
+    def test_amount_guard_at_limit(self, make_callback_context, make_llm_response):
         """Amount exactly at the max should pass (not strictly greater)."""
         from autopilot.agents.guardrails import amount_sanity_guard
 
@@ -466,9 +473,7 @@ class TestGuardrailsDeep:
         result = guard(ctx, resp)
         assert result is None  # Exactly at limit, should pass
 
-    def test_amount_guard_over_limit(
-        self, make_callback_context, make_llm_response
-    ):
+    def test_amount_guard_over_limit(self, make_callback_context, make_llm_response):
         """Amount exceeding limit should be blocked."""
         from autopilot.agents.guardrails import amount_sanity_guard
 
@@ -480,9 +485,7 @@ class TestGuardrailsDeep:
 
     # ── UUID Format Guard (Platform) ─────────────────────────────
 
-    def test_uuid_guard_valid_passes(
-        self, make_callback_context, make_llm_response
-    ):
+    def test_uuid_guard_valid_passes(self, make_callback_context, make_llm_response):
         """Valid UUID should not be blocked."""
         from autopilot.agents.guardrails import uuid_format_guard
 
@@ -494,9 +497,7 @@ class TestGuardrailsDeep:
         result = guard(ctx, resp)
         assert result is None
 
-    def test_uuid_guard_short_invalid(
-        self, make_callback_context, make_llm_response
-    ):
+    def test_uuid_guard_short_invalid(self, make_callback_context, make_llm_response):
         """Too-short UUID should be blocked."""
         from autopilot.agents.guardrails import uuid_format_guard
 
@@ -542,6 +543,7 @@ class TestSemanticCoherenceEdgeCases:
     def _make_guard(self):
         from pathlib import Path
         from workflows.bank_to_ynab.agents.guardrails import semantic_coherence_guard
+
         rules_path = Path(__file__).parent.parent / "data" / "payee_category_rules.json"
         rules = json.loads(rules_path.read_text(encoding="utf-8"))
         return semantic_coherence_guard(rules=rules)
@@ -561,42 +563,62 @@ class TestSemanticCoherenceEdgeCases:
     def test_case_insensitive_matching(self, make_callback_context, make_llm_response):
         guard = self._make_guard()
         ctx = make_callback_context()
-        resp = make_llm_response('{"payee": "NETFLIX", "category_name": "suscripciones"}')
+        resp = make_llm_response(
+            '{"payee": "NETFLIX", "category_name": "suscripciones"}'
+        )
         assert guard(ctx, resp) is None
 
     def test_partial_match_in_payee(self, make_callback_context, make_llm_response):
         guard = self._make_guard()
         ctx = make_callback_context()
-        resp = make_llm_response('{"payee": "UBER *TRIP-12345", "category_name": "Transporte"}')
+        resp = make_llm_response(
+            '{"payee": "UBER *TRIP-12345", "category_name": "Transporte"}'
+        )
         assert guard(ctx, resp) is None
 
     def test_starbucks_dining_coherent(self, make_callback_context, make_llm_response):
         guard = self._make_guard()
         ctx = make_callback_context()
-        resp = make_llm_response('{"payee": "Starbucks Reserve", "category_name": "Dining Out"}')
+        resp = make_llm_response(
+            '{"payee": "Starbucks Reserve", "category_name": "Dining Out"}'
+        )
         assert guard(ctx, resp) is None
 
-    def test_starbucks_transportation_incoherent(self, make_callback_context, make_llm_response):
+    def test_starbucks_transportation_incoherent(
+        self, make_callback_context, make_llm_response
+    ):
         guard = self._make_guard()
         ctx = make_callback_context()
-        resp = make_llm_response('{"payee": "Starbucks Reserve", "category_name": "Transporte"}')
+        resp = make_llm_response(
+            '{"payee": "Starbucks Reserve", "category_name": "Transporte"}'
+        )
         result = guard(ctx, resp)
         assert result is not None
 
-    def test_hospital_with_health_coherent(self, make_callback_context, make_llm_response):
+    def test_hospital_with_health_coherent(
+        self, make_callback_context, make_llm_response
+    ):
         guard = self._make_guard()
         ctx = make_callback_context()
-        resp = make_llm_response('{"payee": "Hospital San Vicente", "category_name": "Salud"}')
+        resp = make_llm_response(
+            '{"payee": "Hospital San Vicente", "category_name": "Salud"}'
+        )
         assert guard(ctx, resp) is None
 
-    def test_hospital_with_dining_incoherent(self, make_callback_context, make_llm_response):
+    def test_hospital_with_dining_incoherent(
+        self, make_callback_context, make_llm_response
+    ):
         guard = self._make_guard()
         ctx = make_callback_context()
-        resp = make_llm_response('{"payee": "Hospital San Vicente", "category_name": "Dining Out"}')
+        resp = make_llm_response(
+            '{"payee": "Hospital San Vicente", "category_name": "Dining Out"}'
+        )
         result = guard(ctx, resp)
         assert result is not None
 
-    def test_suggest_categories_on_mismatch(self, make_callback_context, make_llm_response):
+    def test_suggest_categories_on_mismatch(
+        self, make_callback_context, make_llm_response
+    ):
         guard = self._make_guard()
         ctx = make_callback_context()
         resp = make_llm_response('{"payee": "Netflix", "category_name": "Mercado"}')
@@ -605,11 +627,15 @@ class TestSemanticCoherenceEdgeCases:
         # Should suggest better categories
         assert "expected category" in result.content.parts[0].text.lower()
 
-    def test_unknown_payee_always_coherent(self, make_callback_context, make_llm_response):
+    def test_unknown_payee_always_coherent(
+        self, make_callback_context, make_llm_response
+    ):
         """Payees not in the rules should always pass."""
         guard = self._make_guard()
         ctx = make_callback_context()
-        resp = make_llm_response('{"payee": "XYZ Unknown Store 123", "category_name": "Anything Goes"}')
+        resp = make_llm_response(
+            '{"payee": "XYZ Unknown Store 123", "category_name": "Anything Goes"}'
+        )
         assert guard(ctx, resp) is None
 
 
@@ -644,9 +670,9 @@ class TestGoldenTestData:
         """All expected amounts should be numbers."""
         for case in golden_emails:
             if "amount" in case["expected"]:
-                assert isinstance(
-                    case["expected"]["amount"], (int, float)
-                ), f"Case '{case['name']}' amount is not a number"
+                assert isinstance(case["expected"]["amount"], (int, float)), (
+                    f"Case '{case['name']}' amount is not a number"
+                )
 
     def test_golden_covers_negative_and_positive_amounts(self, golden_emails):
         """Should have both purchases (negative) and deposits (positive)."""
@@ -654,14 +680,17 @@ class TestGoldenTestData:
             case["expected"].get("amount_is_negative", True) for case in golden_emails
         )
         has_positive = any(
-            not case["expected"].get("amount_is_negative", True) for case in golden_emails
+            not case["expected"].get("amount_is_negative", True)
+            for case in golden_emails
         )
         assert has_negative, "No negative amount test cases"
         assert has_positive, "No positive amount test cases"
 
     def test_golden_covers_html_input(self, golden_emails):
         """At least one case should have HTML input."""
-        has_html = any("<" in case["input"] and ">" in case["input"] for case in golden_emails)
+        has_html = any(
+            "<" in case["input"] and ">" in case["input"] for case in golden_emails
+        )
         assert has_html, "No HTML-formatted test cases"
 
     def test_golden_sanitizer_processes_all_inputs(self, golden_emails):
@@ -672,8 +701,6 @@ class TestGoldenTestData:
             result = sanitize_email_html(case["input"])
             assert isinstance(result, str), f"Sanitizer failed on '{case['name']}'"
             assert len(result) > 0, f"Sanitizer returned empty for '{case['name']}'"
-
-
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -712,4 +739,3 @@ class TestConfTestFixtures:
 #  Integration tests have been moved to tests/test_integration.py
 #  Run: pytest tests/test_integration.py -m integration -v
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-

@@ -38,6 +38,7 @@ def semantic_coherence_guard(
             - expected_categories: list[str]
             - bad_categories: list[str]
     """
+
     def _guard(
         callback_context: CallbackContext, llm_response: LlmResponse
     ) -> Optional[LlmResponse]:
@@ -89,12 +90,14 @@ def semantic_coherence_guard(
                 return LlmResponse(
                     content=types.Content(
                         role="model",
-                        parts=[types.Part(
-                            text=f"⚠️ Semantic mismatch: Payee '{payee}' was assigned "
-                                 f"category '{category_name}', which seems incorrect. "
-                                 f"Expected category types: {', '.join(suggested)}. "
-                                 f"Please re-categorize."
-                        )],
+                        parts=[
+                            types.Part(
+                                text=f"⚠️ Semantic mismatch: Payee '{payee}' was assigned "
+                                f"category '{category_name}', which seems incorrect. "
+                                f"Expected category types: {', '.join(suggested)}. "
+                                f"Please re-categorize."
+                            )
+                        ],
                     )
                 )
 

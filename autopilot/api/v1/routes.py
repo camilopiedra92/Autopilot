@@ -23,7 +23,7 @@ async def list_workflows():
     """List all registered workflows along with their status and trigger info."""
     registry = get_registry()
     workflows = registry.list_all()
-    
+
     return {
         "workflows": [
             {
@@ -33,11 +33,11 @@ async def list_workflows():
                 "enabled": info.enabled,
                 "description": info.description,
                 "triggers": [t.model_dump() for t in info.triggers],
-                "tags": info.tags
+                "tags": info.tags,
             }
             for info in workflows
         ],
-        "total": registry.count
+        "total": registry.count,
     }
 
 
@@ -48,14 +48,13 @@ async def get_workflow(workflow_id: str):
     wf = registry.get(workflow_id)
     if not wf:
         raise HTTPException(status_code=404, detail="Workflow not found")
-        
+
     return wf.manifest.model_dump()
 
 
 @router.post("/workflows/{workflow_id}/execute")
 async def execute_workflow(
-    workflow_id: str,
-    input_data: Dict[str, Any] = Body(default_factory=dict)
+    workflow_id: str, input_data: Dict[str, Any] = Body(default_factory=dict)
 ):
     """
     Programmatically trigger a workflow execution.
@@ -70,7 +69,7 @@ async def execute_workflow(
             "workflow_id": run.workflow_id,
             "run_status": run.status.value,
             "result": run.result,
-            "error": run.error
+            "error": run.error,
         }
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -86,7 +85,7 @@ async def list_workflow_runs(workflow_id: str):
     wf = registry.get(workflow_id)
     if not wf:
         raise HTTPException(status_code=404, detail="Workflow not found")
-        
+
     return {
         "workflow_id": workflow_id,
         "runs": [
@@ -95,12 +94,14 @@ async def list_workflow_runs(workflow_id: str):
                 "status": run.status.value,
                 "duration_ms": run.duration_ms,
                 "started_at": run.started_at.isoformat() if run.started_at else None,
-                "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+                "completed_at": run.completed_at.isoformat()
+                if run.completed_at
+                else None,
                 "error": run.error,
-                "trigger_type": run.trigger_type.value
+                "trigger_type": run.trigger_type.value,
             }
             for run in wf.recent_runs
-        ]
+        ],
     }
 
 
@@ -111,9 +112,11 @@ async def get_workflow_run(workflow_id: str, run_id: str):
     wf = registry.get(workflow_id)
     if not wf:
         raise HTTPException(status_code=404, detail="Workflow not found")
-        
+
     for run in wf.recent_runs:
         if run.id == run_id:
             return run.model_dump()
-            
-    raise HTTPException(status_code=404, detail=f"Run {run_id} not found for workflow {workflow_id}")
+
+    raise HTTPException(
+        status_code=404, detail=f"Run {run_id} not found for workflow {workflow_id}"
+    )

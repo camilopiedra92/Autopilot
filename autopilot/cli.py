@@ -39,7 +39,9 @@ def create_workflow(
 
     # 1. Validate name (snake_case only)
     if not re.match(r"^[a-z0-9_]+$", name):
-        print(f"Error: Workflow name '{name}' must be snake_case (lowercase, numbers, underscores).")
+        print(
+            f"Error: Workflow name '{name}' must be snake_case (lowercase, numbers, underscores)."
+        )
         sys.exit(1)
 
     target_dir = WORKFLOWS_DIR / name
@@ -195,7 +197,9 @@ def process_input(input_data: InputData) -> dict:
         print(f"  2. Wire them in: workflows/{name}/pipeline.yaml")
         print("  3. Use @tool decorator for reusable tools (see steps.py examples)")
 
-    print(f"  {4 if not custom else 3}. Restart the platform — it auto-discovers your workflow!")
+    print(
+        f"  {4 if not custom else 3}. Restart the platform — it auto-discovers your workflow!"
+    )
 
 
 def _trigger_yaml(trigger: str) -> str:
@@ -214,7 +218,9 @@ def main():
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # create-workflow command
-    create_parser = subparsers.add_parser("create-workflow", help="Create a new workflow")
+    create_parser = subparsers.add_parser(
+        "create-workflow", help="Create a new workflow"
+    )
     create_parser.add_argument("name", help="Workflow name (snake_case)")
     create_parser.add_argument("--display-name", help="Display name for the workflow")
     create_parser.add_argument("--description", help="Description of the workflow")

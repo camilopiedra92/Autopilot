@@ -97,7 +97,7 @@ class BaseAgent(abc.ABC, Generic[InputT, OutputT]):
                 "agent_name": self.name,
                 "agent_type": self.__class__.__name__,
                 "execution_id": ctx.execution_id,
-            }
+            },
         ) as span:
             step_ctx = ctx.for_step(self.name)
             step_ctx.logger.info("agent_started", agent=self.name)
@@ -114,10 +114,13 @@ class BaseAgent(abc.ABC, Generic[InputT, OutputT]):
                     agent=self.name,
                     duration_ms=elapsed,
                 )
-                await ctx.emit("agent_completed", {
-                    "agent": self.name,
-                    "duration_ms": elapsed,
-                })
+                await ctx.emit(
+                    "agent_completed",
+                    {
+                        "agent": self.name,
+                        "duration_ms": elapsed,
+                    },
+                )
                 return result
 
             except Exception as exc:
@@ -128,17 +131,20 @@ class BaseAgent(abc.ABC, Generic[InputT, OutputT]):
                     duration_ms=elapsed,
                     error=str(exc),
                 )
-                await ctx.emit("agent_failed", {
-                    "agent": self.name,
-                    "duration_ms": elapsed,
-                    "error": str(exc),
-                })
+                await ctx.emit(
+                    "agent_failed",
+                    {
+                        "agent": self.name,
+                        "duration_ms": elapsed,
+                        "error": str(exc),
+                    },
+                )
                 span.record_exception(exc)
                 span.set_status(trace.StatusCode.ERROR, str(exc))
                 raise
-            
+
             finally:
-                if 'elapsed' in locals():
+                if "elapsed" in locals():
                     span.set_attribute("duration_ms", elapsed)
 
     def __repr__(self) -> str:
@@ -175,12 +181,12 @@ class FunctionalAgent(BaseAgent[dict, dict]):
         super().__init__(resolved_name, description=description or func.__doc__ or "")
         self._func = func
         self._is_async = asyncio.iscoroutinefunction(func)
-        
+
         # Cache parameter names and types for fast state unpacking and auto-hydration
         sig = inspect.signature(func)
         self._params = {}
         self._has_var_keyword = False
-        
+
         for param_name, param in sig.parameters.items():
             if param.kind == inspect.Parameter.VAR_KEYWORD:
                 self._has_var_keyword = True
@@ -191,12 +197,12 @@ class FunctionalAgent(BaseAgent[dict, dict]):
         """Extract function args from state and execute."""
         # Build kwargs from the pipeline state
         kwargs = {}
-        
+
         # If function accepts **kwargs, pass the full accumulated state
         if self._has_var_keyword:
             kwargs.update(ctx.state)
             kwargs.update(input)
-            
+
         for param_name, param_type in self._params.items():
             if param_name in input:
                 val = input[param_name]
@@ -209,23 +215,30 @@ class FunctionalAgent(BaseAgent[dict, dict]):
             if isinstance(val, dict) and param_type is not inspect.Parameter.empty:
                 # Get the actual type if it's an Optional/Union
                 import typing as _typing
+
                 origin = _typing.get_origin(param_type)
                 args = _typing.get_args(param_type)
-                
+
                 # Check if the type is a Union (like dict | None)
                 from types import UnionType
+
                 if origin is UnionType or origin is _typing.Union:
-                    if type(None) in args: # Typical Optional check
-                        effective_type = next((t for t in args if t is not type(None)), None)
+                    if type(None) in args:  # Typical Optional check
+                        effective_type = next(
+                            (t for t in args if t is not type(None)), None
+                        )
                     else:
                         effective_type = param_type
                 else:
                     effective_type = param_type
-                    
+
                 import inspect as _inspect
-                if _inspect.isclass(effective_type) and hasattr(effective_type, "model_validate"):
+
+                if _inspect.isclass(effective_type) and hasattr(
+                    effective_type, "model_validate"
+                ):
                     val = effective_type.model_validate(val)
-                    
+
             kwargs[param_name] = val
 
         # Execute
@@ -260,7 +273,9 @@ class ADKAgent(BaseAgent[dict, dict]):
 
     def __init__(self, adk_agent: Any, *, name: str | None = None):
         resolved_name = name or getattr(adk_agent, "name", "adk_agent")
-        super().__init__(resolved_name, description=getattr(adk_agent, "description", ""))
+        super().__init__(
+            resolved_name, description=getattr(adk_agent, "description", "")
+        )
         self._adk_agent = adk_agent
 
     async def run(self, ctx: AgentContext, input: dict) -> dict:
@@ -278,6 +293,7 @@ class ADKAgent(BaseAgent[dict, dict]):
         message = input.get("message", "")
         if not message:
             import json
+
             message = json.dumps(input, default=str)
 
         result = await runner.run(
@@ -304,6 +320,7 @@ class ADKAgent(BaseAgent[dict, dict]):
 
 # ── Decorator shorthand ──────────────────────────────────────────────
 
+
 def functional_agent(
     func: Callable[..., Any] | None = None,
     *,
@@ -328,6 +345,7 @@ def functional_agent(
 
     def wrapper(f: Callable[..., Any]) -> FunctionalAgent:
         return FunctionalAgent(f, name=name, description=description)
+
     return wrapper
 
 
@@ -362,7 +380,9 @@ class SequentialAgentAdapter(BaseAgent[dict, dict]):
     ):
         super().__init__(name, description=description)
         if not children:
-            raise ValueError(f"SequentialAgentAdapter '{name}' requires at least one child.")
+            raise ValueError(
+                f"SequentialAgentAdapter '{name}' requires at least one child."
+            )
         self.children = children
 
     async def run(self, ctx: AgentContext, input: dict) -> dict:
@@ -374,10 +394,13 @@ class SequentialAgentAdapter(BaseAgent[dict, dict]):
             if child_output:
                 state.update(child_output)
 
-            await ctx.emit("sequence_step_completed", {
-                "adapter": self.name,
-                "child": child.name,
-            })
+            await ctx.emit(
+                "sequence_step_completed",
+                {
+                    "adapter": self.name,
+                    "child": child.name,
+                },
+            )
 
         return state
 
@@ -428,11 +451,14 @@ class LoopAgentAdapter(BaseAgent[dict, dict]):
             if body_output:
                 state.update(body_output)
 
-            await ctx.emit("loop_iteration", {
-                "adapter": self.name,
-                "iteration": iteration,
-                "max_iterations": self.max_iterations,
-            })
+            await ctx.emit(
+                "loop_iteration",
+                {
+                    "adapter": self.name,
+                    "iteration": iteration,
+                    "max_iterations": self.max_iterations,
+                },
+            )
 
             if self.condition(state):
                 ctx.logger.info(
@@ -476,7 +502,9 @@ class ParallelAgentAdapter(BaseAgent[dict, dict]):
     ):
         super().__init__(name, description=description)
         if not branches:
-            raise ValueError(f"ParallelAgentAdapter '{name}' requires at least one branch.")
+            raise ValueError(
+                f"ParallelAgentAdapter '{name}' requires at least one branch."
+            )
         self.branches = branches
 
     async def run(self, ctx: AgentContext, input: dict) -> dict:
@@ -486,15 +514,16 @@ class ParallelAgentAdapter(BaseAgent[dict, dict]):
 
         async def _run_branch(branch: BaseAgent) -> dict:
             result = await branch.invoke(ctx, frozen_input)
-            await ctx.emit("parallel_branch_completed", {
-                "adapter": self.name,
-                "branch": branch.name,
-            })
+            await ctx.emit(
+                "parallel_branch_completed",
+                {
+                    "adapter": self.name,
+                    "branch": branch.name,
+                },
+            )
             return result or {}
 
-        results = await asyncio.gather(
-            *[_run_branch(b) for b in self.branches]
-        )
+        results = await asyncio.gather(*[_run_branch(b) for b in self.branches])
 
         # Merge all branch outputs (last-write-wins)
         merged: dict[str, Any] = {}
@@ -535,7 +564,11 @@ class FallbackAgentAdapter(BaseAgent[dict, dict]):
     async def run(self, ctx: AgentContext, input: dict) -> dict:
         """Run primary agent, catching exceptions to trigger fallback."""
         try:
-            ctx.logger.info("fallback_attempting_primary", agent=self.name, primary=self.primary.name)
+            ctx.logger.info(
+                "fallback_attempting_primary",
+                agent=self.name,
+                primary=self.primary.name,
+            )
             return await self.primary.invoke(ctx, input)
         except Exception as exc:
             ctx.logger.warning(
@@ -545,11 +578,14 @@ class FallbackAgentAdapter(BaseAgent[dict, dict]):
                 fallback=self.fallback.name,
                 error=str(exc),
             )
-            await ctx.emit("fallback_triggered", {
-                "adapter": self.name,
-                "failed_agent": self.primary.name,
-                "fallback_agent": self.fallback.name,
-                "error": str(exc),
-            })
+            await ctx.emit(
+                "fallback_triggered",
+                {
+                    "adapter": self.name,
+                    "failed_agent": self.primary.name,
+                    "fallback_agent": self.fallback.name,
+                    "error": str(exc),
+                },
+            )
             # Try fallback
             return await self.fallback.invoke(ctx, input)

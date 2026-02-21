@@ -65,6 +65,7 @@ def _emit_event_async(event: dict) -> None:
     async def _emit():
         try:
             from autopilot.services.event_bus import get_event_bus
+
             bus = get_event_bus()
             await bus.emit(session_id, event)
         except Exception:
@@ -97,13 +98,15 @@ def before_model_logger(
     )
 
     # Emit "started" event to SSE stream
-    _emit_event_async({
-        "type": "stage_started",
-        "stage": agent_name,
-        "status": "running",
-        "tools_available": tool_count,
-        "context_messages": message_count,
-    })
+    _emit_event_async(
+        {
+            "type": "stage_started",
+            "stage": agent_name,
+            "status": "running",
+            "tools_available": tool_count,
+            "context_messages": message_count,
+        }
+    )
 
     return None  # Always proceed
 
@@ -141,14 +144,16 @@ def after_model_logger(
     AGENT_LATENCY.labels(agent_name=agent_name).observe(latency_s)
 
     # ── Emit "completed" event to SSE stream ──────────────────────────
-    _emit_event_async({
-        "type": "stage_completed",
-        "stage": agent_name,
-        "status": "completed",
-        "latency_ms": latency_ms,
-        "response_length": response_length,
-        "has_tool_calls": has_tool_calls,
-    })
+    _emit_event_async(
+        {
+            "type": "stage_completed",
+            "stage": agent_name,
+            "status": "completed",
+            "latency_ms": latency_ms,
+            "response_length": response_length,
+            "has_tool_calls": has_tool_calls,
+        }
+    )
 
     return None  # Never modify the response
 
@@ -157,12 +162,8 @@ def after_model_logger(
 #  Callback Composition Factories
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-BeforeCallback = Callable[
-    [CallbackContext, LlmRequest], Optional[LlmResponse]
-]
-AfterCallback = Callable[
-    [CallbackContext, LlmResponse], Optional[LlmResponse]
-]
+BeforeCallback = Callable[[CallbackContext, LlmRequest], Optional[LlmResponse]]
+AfterCallback = Callable[[CallbackContext, LlmResponse], Optional[LlmResponse]]
 
 
 def create_chained_before_callback(
@@ -175,6 +176,7 @@ def create_chained_before_callback(
     LlmResponse (i.e., it blocks the request), that response is returned
     immediately and subsequent callbacks are skipped.
     """
+
     def chained_before_callback(
         callback_context: CallbackContext, llm_request: LlmRequest
     ) -> Optional[LlmResponse]:
@@ -197,6 +199,7 @@ def create_chained_after_callback(
     LlmResponse (i.e., it modifies/blocks the response), that modified
     response is returned immediately.
     """
+
     def chained_after_callback(
         callback_context: CallbackContext, llm_response: LlmResponse
     ) -> Optional[LlmResponse]:

@@ -47,7 +47,9 @@ async def before_tool_logger(
     Returns None to let the tool execute normally.
     """
     tool_name = tool.name
-    agent_name = tool_context.agent_name if hasattr(tool_context, "agent_name") else "unknown"
+    agent_name = (
+        tool_context.agent_name if hasattr(tool_context, "agent_name") else "unknown"
+    )
 
     # Track start time for latency measurement
     key = f"{agent_name}:{tool_name}"
@@ -67,12 +69,14 @@ async def before_tool_logger(
     )
 
     # Emit SSE event for real-time tool observability
-    _emit_event_async({
-        "type": "tool_started",
-        "agent": agent_name,
-        "tool": tool_name,
-        "args": safe_args,
-    })
+    _emit_event_async(
+        {
+            "type": "tool_started",
+            "agent": agent_name,
+            "tool": tool_name,
+            "args": safe_args,
+        }
+    )
 
     return None  # Allow tool execution to proceed
 
@@ -95,7 +99,9 @@ async def after_tool_logger(
     complementing the model-level metrics from after_model_logger.
     """
     tool_name = tool.name
-    agent_name = tool_context.agent_name if hasattr(tool_context, "agent_name") else "unknown"
+    agent_name = (
+        tool_context.agent_name if hasattr(tool_context, "agent_name") else "unknown"
+    )
 
     key = f"{agent_name}:{tool_name}"
     start = _tool_start_times.pop(key, None)
@@ -117,22 +123,20 @@ async def after_tool_logger(
 
     # ── Prometheus metrics (tool-level) ──────────────────────────────
     status = "error" if is_error else "success"
-    AGENT_CALLS.labels(
-        agent_name=f"tool:{tool_name}", status=status
-    ).inc()
-    AGENT_LATENCY.labels(
-        agent_name=f"tool:{tool_name}"
-    ).observe(latency_s)
+    AGENT_CALLS.labels(agent_name=f"tool:{tool_name}", status=status).inc()
+    AGENT_LATENCY.labels(agent_name=f"tool:{tool_name}").observe(latency_s)
 
     # ── SSE event ────────────────────────────────────────────────────
-    _emit_event_async({
-        "type": "tool_completed",
-        "agent": agent_name,
-        "tool": tool_name,
-        "latency_ms": latency_ms,
-        "is_error": is_error,
-        "response_summary": response_summary,
-    })
+    _emit_event_async(
+        {
+            "type": "tool_completed",
+            "agent": agent_name,
+            "tool": tool_name,
+            "latency_ms": latency_ms,
+            "is_error": is_error,
+            "response_summary": response_summary,
+        }
+    )
 
     return None  # Don't modify the tool response
 
@@ -155,6 +159,7 @@ def create_tool_error_handler(fallback_message: str = "Tool temporarily unavaila
             ...
         )
     """
+
     async def tool_error_handler(
         tool: BaseTool,
         args: dict[str, Any],

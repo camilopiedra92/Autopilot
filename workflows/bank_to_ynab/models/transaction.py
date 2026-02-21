@@ -10,6 +10,7 @@ from typing import Optional
 # ── Account Mapping (deterministic card → YNAB lookup) ───────────────
 class AccountMapping(BaseModel):
     """Maps a bank card suffix to a specific YNAB budget + account."""
+
     card_suffix: str
     budget_id: str
     budget_name: str
@@ -78,11 +79,19 @@ class CategorizedTransaction(BaseModel):
 # ── Stage X: Web Researcher output ────────────────────────────────────
 class EnrichedPayee(BaseModel):
     """Enriched entity data from the Web Researcher agent."""
-    
-    clean_name: str = Field(description="Normalized real name of the merchant/establishment.")
-    establishment_type: str = Field(description="Type of business (e.g., 'Supermarket', 'Restaurant', 'Software Subscription').")
-    website: Optional[str] = Field(default=None, description="Official website URL if found.")
-    location: Optional[str] = Field(default=None, description="Physical location or neighborhood if relevant.")
+
+    clean_name: str = Field(
+        description="Normalized real name of the merchant/establishment."
+    )
+    establishment_type: str = Field(
+        description="Type of business (e.g., 'Supermarket', 'Restaurant', 'Software Subscription')."
+    )
+    website: Optional[str] = Field(
+        default=None, description="Official website URL if found."
+    )
+    location: Optional[str] = Field(
+        default=None, description="Physical location or neighborhood if relevant."
+    )
 
 
 # ── Post-Transaction: Category Balance snapshot ──────────────────────
@@ -91,9 +100,13 @@ class CategoryBalance(BaseModel):
 
     category_name: str = Field(description="YNAB category name.")
     budgeted: float = Field(description="Amount budgeted this month (currency units).")
-    activity: float = Field(description="Spending activity this month (currency units, negative = spending).")
+    activity: float = Field(
+        description="Spending activity this month (currency units, negative = spending)."
+    )
     balance: float = Field(description="Remaining available balance (currency units).")
-    is_overspent: bool = Field(description="True if balance is negative (overspending).")
+    is_overspent: bool = Field(
+        description="True if balance is negative (overspending)."
+    )
 
 
 # ── Final: Complete Transaction (all stages merged) ──────────────────
@@ -129,5 +142,3 @@ class Transaction(BaseModel):
     def amount_milliunits(self) -> int:
         """YNAB expects amounts in milliunits (amount × 1000)."""
         return int(self.amount * 1000)
-
-

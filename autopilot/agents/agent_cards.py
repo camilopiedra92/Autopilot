@@ -38,7 +38,9 @@ def load_agent_card(yaml_path: str | Path) -> AgentCard:
         raw = yaml.safe_load(f)
 
     if not isinstance(raw, dict):
-        raise ValueError(f"Agent card must be a YAML mapping, got {type(raw).__name__}: {path}")
+        raise ValueError(
+            f"Agent card must be a YAML mapping, got {type(raw).__name__}: {path}"
+        )
 
     try:
         card = AgentCard(**raw)

@@ -47,11 +47,7 @@ async def health():
 
 @router.get("/")
 async def root():
-    return {
-        "api": "AutoPilot Headless API",
-        "version": VERSION,
-        "status": "online"
-    }
+    return {"api": "AutoPilot Headless API", "version": VERSION, "status": "online"}
 
 
 @router.get("/metrics")
@@ -66,6 +62,7 @@ def _get_pubsub_connector():
     """Get the PubSub connector from the registry, or None."""
     try:
         from autopilot.connectors import get_connector_registry
+
         return get_connector_registry().get("pubsub")
     except Exception:
         return None
@@ -102,8 +99,8 @@ async def gmail_watch_renew():
 @router.post("/gmail/watch/stop")
 async def gmail_watch_stop():
     """Force stop the Gmail watch.
-    
-    Useful when migrating environments or fixing the 'Only one user push notification 
+
+    Useful when migrating environments or fixing the 'Only one user push notification
     client allowed per developer' error.
     """
     pubsub = _get_pubsub_connector()
@@ -115,4 +112,3 @@ async def gmail_watch_stop():
         return {"stopped": True}
     except Exception as e:
         return {"stopped": False, "error": str(e)}
-

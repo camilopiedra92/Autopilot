@@ -16,7 +16,12 @@ import os
 import time
 import structlog
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 
 from autopilot.connectors.base_connector import BaseConnector
 
@@ -27,10 +32,14 @@ TODOIST_API_URL_REST = "https://api.todoist.com/api/v1"
 
 # ── Exceptions ───────────────────────────────────────────────────────
 
-from autopilot.errors import ConnectorError as TodoistError, ConnectorRateLimitError as TodoistRateLimitError
+from autopilot.errors import (
+    ConnectorError as TodoistError,
+    ConnectorRateLimitError as TodoistRateLimitError,
+)
 
 
 # ── TTL Cache ────────────────────────────────────────────────────────
+
 
 class TTLCache:
     """Simple thread-safe TTL cache for Todoist data."""
@@ -58,6 +67,7 @@ class TTLCache:
 
 
 # ── Async Todoist Client ─────────────────────────────────────────────
+
 
 class AsyncTodoistClient:
     """
@@ -101,12 +111,19 @@ class AsyncTodoistClient:
         latency_ms = (time.monotonic() - start) * 1000
 
         if resp.status_code == 429:
-            logger.warning("todoist_rate_limited", path=path, latency_ms=round(latency_ms))
+            logger.warning(
+                "todoist_rate_limited", path=path, latency_ms=round(latency_ms)
+            )
             raise TodoistRateLimitError("Rate limit exceeded")
         if resp.status_code == 401:
-            raise TodoistError("Authentication failed — check your access token", detail="401")
+            raise TodoistError(
+                "Authentication failed — check your access token", detail="401"
+            )
         if resp.status_code >= 400:
-            raise TodoistError(f"API error: {resp.status_code} — {resp.text}", detail=str(resp.status_code))
+            raise TodoistError(
+                f"API error: {resp.status_code} — {resp.text}",
+                detail=str(resp.status_code),
+            )
 
         logger.debug(
             "todoist_request",
@@ -116,7 +133,7 @@ class AsyncTodoistClient:
             latency_ms=round(latency_ms),
             http_version=resp.http_version,
         )
-        
+
         if resp.status_code == 204:
             return None
         return resp.json()
@@ -142,10 +159,7 @@ class AsyncTodoistClient:
     async def get_projects_string(self) -> str:
         """Returns formatted project list for AI tool consumption."""
         projects = await self.get_projects()
-        output = [
-            f"Project: {p['name']} (ID: {p['id']})"
-            for p in projects
-        ]
+        output = [f"Project: {p['name']} (ID: {p['id']})" for p in projects]
         return "\n".join(output)
 
     async def project_exists(self, project_id: str) -> bool:
@@ -158,7 +172,7 @@ class AsyncTodoistClient:
         params = {}
         if project_id:
             params["project_id"] = project_id
-            
+
         data = await self._request("GET", "/tasks", params=params)
         return data.get("results", data) if isinstance(data, dict) else data
 
@@ -197,7 +211,7 @@ class AsyncTodoistClient:
     async def create_task(self, transaction_payload: dict) -> dict:
         """
         Create a task in Todoist.
-        
+
         Args:
             transaction_payload: A dictionary matching the Todoist API task schema.
                 For example: {"content": "Buy milk", "project_id": "123", "due_string": "tomorrow"}
@@ -266,7 +280,9 @@ class AsyncTodoistClient:
         wait=wait_exponential(multiplier=1, min=2, max=30),
         retry=retry_if_exception_type(TodoistRateLimitError),
     )
-    async def create_section(self, name: str, project_id: str, order: int | None = None) -> dict:
+    async def create_section(
+        self, name: str, project_id: str, order: int | None = None
+    ) -> dict:
         """Create a new section within a project."""
         logger.info("todoist_creating_section", name=name, project_id=project_id)
         payload = {"name": name, "project_id": project_id}
@@ -300,7 +316,9 @@ class AsyncTodoistClient:
         wait=wait_exponential(multiplier=1, min=2, max=30),
         retry=retry_if_exception_type(TodoistRateLimitError),
     )
-    async def create_label(self, name: str, color: str | None = None, is_favorite: bool = False) -> dict:
+    async def create_label(
+        self, name: str, color: str | None = None, is_favorite: bool = False
+    ) -> dict:
         """Create a new personal label."""
         logger.info("todoist_creating_label", name=name)
         payload = {"name": name, "is_favorite": is_favorite}
@@ -324,16 +342,20 @@ class AsyncTodoistClient:
 
     # ── Comments ───────────────────────────────────────────────────
 
-    async def get_comments(self, task_id: str | None = None, project_id: str | None = None) -> list[dict]:
+    async def get_comments(
+        self, task_id: str | None = None, project_id: str | None = None
+    ) -> list[dict]:
         """Fetch comments for a given task or project."""
         if not task_id and not project_id:
-            raise TodoistError("Must provide either task_id or project_id to fetch comments.")
+            raise TodoistError(
+                "Must provide either task_id or project_id to fetch comments."
+            )
         params = {}
         if task_id:
             params["task_id"] = task_id
         if project_id:
             params["project_id"] = project_id
-            
+
         data = await self._request("GET", "/comments", params=params)
         return data.get("results", data) if isinstance(data, dict) else data
 
@@ -342,23 +364,23 @@ class AsyncTodoistClient:
         wait=wait_exponential(multiplier=1, min=2, max=30),
         retry=retry_if_exception_type(TodoistRateLimitError),
     )
-    async def create_comment(self, content: str, task_id: str | None = None, project_id: str | None = None) -> dict:
+    async def create_comment(
+        self, content: str, task_id: str | None = None, project_id: str | None = None
+    ) -> dict:
         """Create a comment on a task or project."""
         if not task_id and not project_id:
-            raise TodoistError("Must provide either task_id or project_id to create a comment.")
-            
-        logger.info(
-            "todoist_creating_comment", 
-            task_id=task_id, 
-            project_id=project_id
-        )
-        
+            raise TodoistError(
+                "Must provide either task_id or project_id to create a comment."
+            )
+
+        logger.info("todoist_creating_comment", task_id=task_id, project_id=project_id)
+
         payload = {"content": content}
         if task_id:
             payload["task_id"] = task_id
         if project_id:
             payload["project_id"] = project_id
-            
+
         data = await self._request("POST", "/comments", json=payload)
         logger.info("todoist_comment_created", comment_id=data.get("id"))
         return data
@@ -369,6 +391,7 @@ class AsyncTodoistClient:
 
 
 # ── Connector ────────────────────────────────────────────────────────
+
 
 class TodoistConnector(BaseConnector):
     """

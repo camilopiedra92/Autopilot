@@ -16,8 +16,9 @@ logger = structlog.get_logger(__name__)
 class BankToYnabWorkflow(BaseWorkflow):
     """
     Bank→YNAB: Parse bank notification emails and create YNAB transactions.
-    
+
     This class loads its identity from manifest.yaml and its execution logic
     from pipeline.yaml. It relies entirely on the platform's DSL loader.
     """
+
     pass
