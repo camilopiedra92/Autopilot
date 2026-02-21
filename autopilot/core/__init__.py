@@ -46,6 +46,11 @@ from autopilot.core.bus import (
     get_agent_bus,
     reset_agent_bus,
 )
+from autopilot.core.subscribers import (
+    SubscriberRegistry,
+    get_subscriber_registry,
+    reset_subscriber_registry,
+)
 from autopilot.core.dsl_schema import (
     DSLWorkflowDef,
     DSLStepDef,
@@ -85,6 +90,10 @@ __all__ = [
     "Subscription",
     "get_agent_bus",
     "reset_agent_bus",
+    # V3 Phase 5b — Subscriber Registry
+    "SubscriberRegistry",
+    "get_subscriber_registry",
+    "reset_subscriber_registry",
     # V3 Phase 6 — Declarative DSL
     "DSLWorkflowDef",
     "DSLStepDef",

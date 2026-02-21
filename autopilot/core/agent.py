@@ -204,6 +204,15 @@ class FunctionalAgent(BaseAgent[dict, dict]):
             kwargs.update(input)
 
         for param_name, param_type in self._params.items():
+            # Auto-inject AgentContext when requested (mirrors ADK ToolContext)
+            if param_name == "ctx" and (
+                param_type is AgentContext
+                or param_type == "AgentContext"
+                or (isinstance(param_type, str) and "AgentContext" in param_type)
+            ):
+                kwargs["ctx"] = ctx
+                continue
+
             if param_name in input:
                 val = input[param_name]
             elif param_name in ctx.state:

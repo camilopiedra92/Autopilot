@@ -751,7 +751,7 @@ class TestPushToYnabCategoryBalance:
 
 
 class TestTelegramNotifier:
-    """Tests for the Telegram notifier agent pipeline stage."""
+    """Tests for the Telegram notifier formatting (now in subscriber)."""
 
     def _make_category_balance(self):
         return {
@@ -775,34 +775,37 @@ class TestTelegramNotifier:
             data["category_balance"] = self._make_category_balance()
         return data
 
-    def test_format_notifier_input_includes_result(self):
-        """format_notifier_input serializes final_result_data and category_balance."""
-        from workflows.bank_to_ynab.steps import format_notifier_input
-
-        result = format_notifier_input(
-            final_result_data=self._make_result_data(with_balance=True),
+    def test_format_notifier_context_includes_result(self):
+        """_format_notifier_context serializes payload and category_balance."""
+        from workflows.bank_to_ynab.subscribers.telegram_subscriber import (
+            _format_notifier_context,
         )
+
+        result = _format_notifier_context(self._make_result_data(with_balance=True))
         assert "Restaurante El Cielo" in result["final_result_data"]
         assert "-50000" in result["final_result_data"]
         assert "Dining Out" in result["category_balance"]
         assert "Disponible real" in result["category_balance"]
         assert "message" in result
 
-    def test_format_notifier_input_no_category(self):
+    def test_format_notifier_context_no_category(self):
         """When no category_balance exists, cat_str is 'No disponible'."""
-        from workflows.bank_to_ynab.steps import format_notifier_input
-
-        result = format_notifier_input(
-            final_result_data=self._make_result_data(with_balance=False),
+        from workflows.bank_to_ynab.subscribers.telegram_subscriber import (
+            _format_notifier_context,
         )
+
+        result = _format_notifier_context(self._make_result_data(with_balance=False))
         assert result["category_balance"] == "No disponible"
 
-    def test_format_notifier_input_empty_result(self):
-        """Returns fallback message when final_result_data is empty."""
-        from workflows.bank_to_ynab.steps import format_notifier_input
+    def test_format_notifier_context_empty_payload(self):
+        """Returns empty lines for empty payload."""
+        from workflows.bank_to_ynab.subscribers.telegram_subscriber import (
+            _format_notifier_context,
+        )
 
-        result = format_notifier_input(final_result_data={})
-        assert "No hay datos" in result["message"]
+        result = _format_notifier_context({})
+        assert "message" in result
+        assert result["category_balance"] == "No disponible"
 
     def test_notifier_agent_has_telegram_tool(self):
         """The telegram_notifier agent has the telegram.send_message_string tool."""
@@ -812,3 +815,4 @@ class TestTelegramNotifier:
 
         agent = create_telegram_notifier()
         assert len(agent.tools) >= 1
+

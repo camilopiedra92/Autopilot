@@ -1,47 +1,45 @@
 name: bank_to_ynab
-strategy: sequential
+strategy: dag
 
-steps:
+nodes:
   - name: format_parser_prompt
-    type: function
     ref: workflows.bank_to_ynab.steps.format_parser_prompt
 
   - name: email_parser
-    type: agent
     ref: workflows.bank_to_ynab.agents.email_parser.create_email_parser
+    dependencies: [format_parser_prompt]
 
+  # ── Parallel layer ⚡ — both depend only on email_parser ──
   - name: match_account
-    type: function
     ref: workflows.bank_to_ynab.steps.match_account
+    dependencies: [email_parser]
 
   - name: format_researcher_input
-    type: function
     ref: workflows.bank_to_ynab.steps.format_researcher_input
+    dependencies: [email_parser]
 
+  # ── researcher waits for its format step ──
   - name: researcher
-    type: agent
     ref: workflows.bank_to_ynab.agents.researcher.create_researcher
+    dependencies: [format_researcher_input]
 
+  # ── categorizer waits for BOTH parallel branches ──
   - name: format_categorizer_input
-    type: function
     ref: workflows.bank_to_ynab.steps.format_categorizer_input
+    dependencies: [match_account, researcher]
 
   - name: categorizer
-    type: agent
     ref: workflows.bank_to_ynab.agents.categorizer.create_categorizer
+    dependencies: [format_categorizer_input]
 
   - name: synthesize_transaction
-    type: function
     ref: workflows.bank_to_ynab.steps.synthesize_transaction
+    dependencies: [categorizer, match_account, researcher]
 
   - name: push_to_ynab
-    type: function
     ref: workflows.bank_to_ynab.steps.push_to_ynab
+    dependencies: [synthesize_transaction]
 
-  - name: format_notifier_input
-    type: function
-    ref: workflows.bank_to_ynab.steps.format_notifier_input
-
-  - name: telegram_notifier
-    type: agent
-    ref: workflows.bank_to_ynab.agents.telegram_notifier.create_telegram_notifier
+  - name: publish_transaction_event
+    ref: workflows.bank_to_ynab.steps.publish_transaction_event
+    dependencies: [push_to_ynab]

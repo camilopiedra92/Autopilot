@@ -3,7 +3,7 @@ Platform Routes — Unified HTTP endpoints for the Autopilot platform.
 
 Handles:
   - Generic Webhooks: POST /api/webhook/{path}
-  - Gmail Push: POST /gmail/webhook (Pub/Sub)
+  - Gmail Push: POST /gmail/webhook (Pub/Sub) → publishes email.received to AgentBus
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from autopilot.router import get_router
 from autopilot.connectors import get_connector_registry
+from autopilot.core.bus import get_agent_bus
 
 logger = structlog.get_logger(__name__)
 
@@ -64,7 +65,7 @@ async def generic_webhook(webhook_path: str, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ── Gmail Pub/Sub Webhook ────────────────────────────────────────────
+# ── Gmail Pub/Sub Webhook (Event-Driven Adapter) ────────────────────
 
 
 @router.post("/gmail/webhook")
@@ -72,10 +73,18 @@ async def gmail_push_webhook(request: Request):
     """
     Handle Google Cloud Pub/Sub push notifications for Gmail.
 
+    This is a **thin event adapter** — it decodes the Pub/Sub message,
+    fetches new emails, and publishes each one as an ``email.received``
+    event on the AgentBus. Subscribed workflows react independently.
+
+    The bus awaits all subscribers via ``asyncio.gather`` before this
+    endpoint responds, ensuring Pub/Sub only ACKs after full processing.
+
     Flow:
       1. Receive Pub/Sub message
       2. PubSubConnector decodes & fetches new emails
-      3. For each email, WorkflowRouter routes to matching workflows
+      3. Publish each email as ``email.received`` on the AgentBus
+      4. Subscribed workflows self-match and execute
     """
     try:
         pubsub_message = await request.json()
@@ -100,14 +109,27 @@ async def gmail_push_webhook(request: Request):
     if not emails:
         return {"status": "ignored", "reason": "no_new_emails"}
 
-    # 2. Route
-    router_svc = get_router()
-    summary = {"processed": 0, "triggered_runs": 0}
-
+    # 2. Publish each email as an event (bus awaits all subscribers)
+    bus = get_agent_bus()
     for email in emails:
-        # route_gmail_push now returns list[WorkflowRun]
-        runs = await router_svc.route_gmail_push(email)
-        summary["processed"] += 1
-        summary["triggered_runs"] += len(runs)
+        event_payload = {
+            "email_id": email.get("id", ""),
+            "sender": email.get("from", ""),
+            "subject": email.get("subject", ""),
+            "body": email.get("body", ""),
+            "label_ids": email.get("labelIds", []),
+            "source": "pubsub",
+            # Preserve full email for workflows that need it
+            "email": email,
+        }
 
-    return {"status": "ok", "summary": summary}
+        logger.info(
+            "email_event_publishing",
+            email_id=event_payload["email_id"],
+            sender=event_payload["sender"],
+            subject=event_payload["subject"][:80],
+        )
+
+        await bus.publish("email.received", event_payload, sender="gmail_webhook")
+
+    return {"status": "ok", "emails_published": len(emails)}

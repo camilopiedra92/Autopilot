@@ -14,6 +14,10 @@ Steps:
 
 import json
 import re
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from autopilot.core.context import AgentContext
 import structlog
 from pathlib import Path
 
@@ -412,47 +416,35 @@ async def _fetch_category_balance(
     }
 
 
-# ── Step 6: Format input for Telegram notifier agent ────────────────
+# ── Step 6: Publish transaction event to AgentBus ───────────────────
 
 
-def format_notifier_input(**state) -> dict:
+async def publish_transaction_event(ctx: "AgentContext", **state) -> dict:
     """
-    Prepare context for the Telegram notifier agent.
+    Pipeline step: publish a typed ``transaction.created`` event to the AgentBus.
 
-    Serializes final_result_data and category_balance into the
-    pipeline state so the agent's instruction template can interpolate them.
+    Reactive subscribers (Telegram notifier, Airtable logger, anomaly detector,
+    etc.) receive the event concurrently and independently via the bus's
+    dead-letter isolation pattern.
+
+    Uses ``ctx`` injection (auto-provided by FunctionalAgent when the parameter
+    is annotated as ``AgentContext``).
     """
+    from autopilot.core.context import AgentContext  # noqa: F811
+    from workflows.bank_to_ynab.models.events import TransactionEvent
+
     result = state.get("final_result_data", {})
     if not result:
-        logger.info("format_notifier_skipped", reason="no final_result_data")
-        return {"message": "No hay datos de transacción para notificar."}
+        ctx.logger.info("publish_skipped", reason="no final_result_data")
+        return {}
 
-    # Extract category_balance from inside final_result_data
-    cat_balance = result.get("category_balance", {})
+    event = TransactionEvent.from_pipeline_state(result)
+    await ctx.publish("transaction.created", event.model_dump())
 
-    # Build a clean summary of the transaction (excluding nested balance)
-    tx_lines = []
-    for key, value in result.items():
-        if key == "category_balance":
-            continue  # handled separately
-        tx_lines.append(f"  {key}: {value}")
-
-    final_result_str = "\n".join(tx_lines)
-
-    # Build an explicit, labeled category balance string
-    if cat_balance:
-        cat_str = (
-            f"Categoría: {cat_balance.get('category_name', 'N/A')}\n"
-            f"Presupuesto del mes: ${cat_balance.get('budgeted', 0):,.0f}\n"
-            f"Gastado en el mes: ${abs(cat_balance.get('activity', 0)):,.0f}\n"
-            f"Disponible real (incluye rollover): ${cat_balance.get('balance', 0):,.0f}\n"
-            f"Sobrepasado: {'Sí' if cat_balance.get('is_overspent') else 'No'}"
-        )
-    else:
-        cat_str = "No disponible"
-
-    return {
-        "final_result_data": final_result_str,
-        "category_balance": cat_str,
-        "message": f"Envía la notificación de esta transacción:\n{final_result_str}",
-    }
+    ctx.logger.info(
+        "transaction_event_published",
+        topic="transaction.created",
+        payee=event.payee,
+        amount=event.amount,
+    )
+    return {"event_published": True}

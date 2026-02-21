@@ -220,6 +220,48 @@ class BaseWorkflow:
         """Called when the platform shuts down. Override for cleanup."""
         pass
 
+    # ── Trigger Matching ──────────────────────────────────────────────
+
+    def _matches_gmail_trigger(self, email_data: dict) -> bool:
+        """
+        Check if an email matches this workflow's GMAIL_PUSH trigger config.
+
+        Uses the same sender/label matching logic that was previously in
+        ``WorkflowRouter.route_gmail_push()``, but as an instance method
+        so workflows can self-match when reacting to ``email.received`` events.
+
+        Args:
+            email_data: Dict containing 'sender'/'from' and 'label_ids'/'labelIds'.
+
+        Returns:
+            True if the email matches at least one GMAIL_PUSH trigger.
+        """
+        if not self.manifest.enabled:
+            return False
+
+        sender = (
+            email_data.get("sender", "") or email_data.get("from", "")
+        ).lower()
+        email_labels = set(
+            email_data.get("label_ids", []) or email_data.get("labelIds", [])
+        )
+
+        for trigger in self.manifest.triggers:
+            if trigger.type != TriggerType.GMAIL_PUSH:
+                continue
+
+            # Match sender filter
+            if trigger.filter and trigger.filter.lower() not in sender:
+                continue
+
+            # Match label IDs
+            if trigger.label_ids and not set(trigger.label_ids).intersection(email_labels):
+                continue
+
+            return True  # Match found
+
+        return False
+
     async def health_check(self) -> bool:
         """Check if the workflow is healthy and ready to execute."""
         return True

@@ -133,18 +133,43 @@ For complex logic that DSL can't express:
 
 ```python
 from autopilot.base_workflow import BaseWorkflow
-from autopilot.models import WorkflowResult, RunStatus
+from autopilot.models import WorkflowResult, RunStatus, TriggerType
 
 
 class InvoiceProcessorWorkflow(BaseWorkflow):
     """manifest.yaml and agent cards are auto-loaded."""
 
+    async def setup(self):
+        """Register event subscribers during workflow initialization."""
+        from autopilot.core.subscribers import get_subscriber_registry
+
+        registry = get_subscriber_registry()
+
+        # React to email events — self-match using manifest trigger config
+        registry.register(
+            "email.received",
+            self._on_email_received,
+            name="invoice_processor_email_trigger",
+        )
+
+        # React to domain events (e.g., send notifications)
+        # registry.register("invoice.processed", on_invoice_done, name="notifier")
+
+    async def _on_email_received(self, msg):
+        """React to email.received — run pipeline if sender/labels match."""
+        payload = msg.payload if hasattr(msg, "payload") else msg
+        if not self._matches_gmail_trigger(payload):
+            return  # Not for this workflow
+
+        email_data = payload.get("email", payload)
+        await self.run(TriggerType.GMAIL_PUSH, {
+            "body": payload.get("body", ""),
+            "email": email_data,
+        })
+
     async def execute(self, trigger_data):
         email_body = trigger_data.get("body", "")
         cards = self.get_agent_cards()  # Auto-discovered
-
-        # Use AgentBus for event publishing if necessary
-        # await self.ctx.publish("invoice.received", {"email": email_body})
 
         result = await invoke_pipeline(email_body, cards)
 
@@ -160,6 +185,7 @@ class InvoiceProcessorWorkflow(BaseWorkflow):
 - ~~`manifest` property~~ → auto-loaded from `manifest.yaml`
 - ~~`get_agent_cards()`~~ → auto-discovered from `agents/`
 - ~~`__init__.py` with `workflow = ...`~~ → registry auto-discovers
+- ~~Gmail routing logic~~ → `_matches_gmail_trigger()` inherited from `BaseWorkflow`
 
 ---
 

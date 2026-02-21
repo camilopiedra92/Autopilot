@@ -40,37 +40,78 @@ class TestWorkflowRouterLogic:
         registry.get_or_raise.assert_called_with("wf-id")
         workflow.run.assert_awaited_with(TriggerType.MANUAL, {"data": 123})
 
-    async def test_route_gmail_push_broadcasts(self):
-        registry = MagicMock()
+    async def test_matches_gmail_trigger_sender_match(self):
+        """BaseWorkflow._matches_gmail_trigger matches by sender filter."""
+        from autopilot.base_workflow import BaseWorkflow
+        from autopilot.models import TriggerConfig, WorkflowManifest
 
-        # Create realistic workflow mocks with manifest and triggers
-        trigger_config = MagicMock()
-        trigger_config.type = TriggerType.GMAIL_PUSH
-        trigger_config.filter = "bank.com"
-        trigger_config.label_ids = []
+        wf = BaseWorkflow.__new__(BaseWorkflow)
+        wf._manifest = WorkflowManifest(
+            name="test_wf",
+            display_name="Test",
+            triggers=[
+                TriggerConfig(
+                    type=TriggerType.GMAIL_PUSH,
+                    filter="bank.com",
+                    label_ids=[],
+                ),
+            ],
+        )
 
-        wf1 = AsyncMock()
-        wf1.manifest.name = "wf1"
-        wf1.manifest.enabled = True
-        wf1.manifest.triggers = [trigger_config]
+        # Should match
+        assert wf._matches_gmail_trigger({"sender": "alerts@bank.com", "label_ids": ["INBOX"]})
+        # Should not match
+        assert not wf._matches_gmail_trigger({"sender": "nope@other.com", "label_ids": ["INBOX"]})
 
-        wf2 = AsyncMock()
-        wf2.manifest.name = "wf2"
-        wf2.manifest.enabled = True
-        wf2.manifest.triggers = [trigger_config]
+    async def test_matches_gmail_trigger_disabled_workflow(self):
+        """Disabled workflows never match."""
+        from autopilot.base_workflow import BaseWorkflow
+        from autopilot.models import TriggerConfig, WorkflowManifest
 
-        registry.get_all_workflows.return_value = [wf1, wf2]
+        wf = BaseWorkflow.__new__(BaseWorkflow)
+        wf._manifest = WorkflowManifest(
+            name="test_wf",
+            display_name="Test",
+            enabled=False,
+            triggers=[
+                TriggerConfig(type=TriggerType.GMAIL_PUSH, filter="bank.com"),
+            ],
+        )
+        assert not wf._matches_gmail_trigger({"sender": "alerts@bank.com"})
 
-        router = WorkflowRouter(registry)
+    async def test_matches_gmail_trigger_label_match(self):
+        """Label IDs must overlap when specified."""
+        from autopilot.base_workflow import BaseWorkflow
+        from autopilot.models import TriggerConfig, WorkflowManifest
 
-        email_data = {
-            "from": "alerts@bank.com",
-            "subject": "Transaction Alert",
-            "body": "<html>...</html>",
-            "labelIds": ["INBOX"],
-        }
-        results = await router.route_gmail_push(email_data)
+        wf = BaseWorkflow.__new__(BaseWorkflow)
+        wf._manifest = WorkflowManifest(
+            name="test_wf",
+            display_name="Test",
+            triggers=[
+                TriggerConfig(
+                    type=TriggerType.GMAIL_PUSH,
+                    label_ids=["INBOX", "Label_123"],
+                ),
+            ],
+        )
 
-        assert len(results) == 2
-        assert wf1.run.await_count == 1
-        assert wf2.run.await_count == 1
+        assert wf._matches_gmail_trigger({"sender": "x@y.com", "label_ids": ["INBOX"]})
+        assert not wf._matches_gmail_trigger({"sender": "x@y.com", "label_ids": ["SPAM"]})
+
+    async def test_email_received_event_via_bus(self):
+        """email.received published on bus is delivered to subscribers."""
+        from autopilot.core.bus import AgentBus
+
+        bus = AgentBus()
+        received = []
+
+        async def handler(msg):
+            received.append(msg.payload)
+
+        bus.subscribe("email.received", handler)
+        await bus.publish("email.received", {"sender": "a@b.com"}, sender="test")
+
+        assert len(received) == 1
+        assert received[0]["sender"] == "a@b.com"
+

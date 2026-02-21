@@ -6,7 +6,7 @@ description: Run a full E2E test of the bank_to_ynab pipeline with detailed trac
 
 ## Run E2E Bank to YNAB Test
 
-This workflow executes the full `bank_to_ynab` pipeline end-to-end with a real bank transaction email. It traces every stage (parsing, matching, research, categorization, YNAB push, Telegram notification) and prints a detailed colorized report.
+This workflow executes the full `bank_to_ynab` pipeline end-to-end **via the AgentBus**, simulating a real production Gmail event. It publishes an `email.received` event, the workflow self-matches by sender, runs the pipeline (parsing → research → categorization → YNAB push), and fires the `transaction.created` event which triggers the Telegram notification.
 
 ### Prerequisites
 
@@ -16,25 +16,31 @@ This workflow executes the full `bank_to_ynab` pipeline end-to-end with a real b
 
 1. **Ask for input**: Ask the user for the bank email text to process. If not provided, use the default embedded in the script.
 
-2. **Run with auto_create ON** (creates transaction in YNAB + sends Telegram):
+2. **Run full E2E via AgentBus** (default — simulates real production event, creates transaction in YNAB + sends Telegram):
 
    ```bash
-   cd /Users/camilopiedra/Development/N8N && python scripts/run_e2e_bank_to_ynab.py "<EMAIL_TEXT>"
+   cd /Users/camilopiedra/Development/Autopilot && python scripts/run_e2e_bank_to_ynab.py
    ```
 
-3. **Run with auto_create OFF** (dry run — no YNAB creation, still sends Telegram):
+3. **Run with custom email text**:
 
    ```bash
-   cd /Users/camilopiedra/Development/N8N && python scripts/run_e2e_bank_to_ynab.py "<EMAIL_TEXT>" --no-create
+   cd /Users/camilopiedra/Development/Autopilot && python scripts/run_e2e_bank_to_ynab.py "<EMAIL_TEXT>"
    ```
 
-4. **Run with default email** (uses built-in VET AGRO test case):
+4. **Run direct pipeline** (bypasses bus, useful for debugging pipeline-only issues):
 
    ```bash
-   cd /Users/camilopiedra/Development/N8N && python scripts/run_e2e_bank_to_ynab.py
+   cd /Users/camilopiedra/Development/Autopilot && python scripts/run_e2e_bank_to_ynab.py --direct
    ```
 
-5. **Report the results**: Show the user the structured output from the script. Key things to report:
+5. **Run dry-run** (no YNAB creation):
+
+   ```bash
+   cd /Users/camilopiedra/Development/Autopilot && python scripts/run_e2e_bank_to_ynab.py --no-create
+   ```
+
+6. **Report the results**: Show the user the structured output from the script. Key things to report:
    - Overall status (success/failure) and total time
    - Each stage's input/output
    - YNAB transaction ID (if created)
@@ -43,6 +49,7 @@ This workflow executes the full `bank_to_ynab` pipeline end-to-end with a real b
 
 ### Notes
 
+- Default mode (`--via-bus`) tests the full event-driven architecture: `email.received` → workflow self-match → pipeline → `transaction.created` → Telegram
+- `auto_create` defaults to `true` from `manifest.yaml` settings. Pass `--no-create` to override.
 - The script uses colorized ANSI output for terminal readability
-- All structlog events from the pipeline are also printed (step_started, tool_call_completed, etc.)
 - Typical execution time is ~30-40 seconds (network-bound: Gemini API, YNAB API, Telegram API, web search)

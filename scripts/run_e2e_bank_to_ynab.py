@@ -95,24 +95,71 @@ def print_step_result(
         print(f"      {DIM}{ARROW} Output keys: {', '.join(output_keys)}{RESET}")
 
 
-async def run_e2e(email_text: str, auto_create: bool = True):
+async def run_e2e(email_text: str, auto_create: bool = True, via_bus: bool = False):
     """Execute the full pipeline with detailed tracing."""
     from workflows.bank_to_ynab.workflow import BankToYnabWorkflow
 
-    print_header("Bank → YNAB — Full E2E Pipeline")
+    mode = "Event-Driven (via AgentBus)" if via_bus else "Direct Pipeline"
+    print_header(f"Bank → YNAB — Full E2E [{mode}]")
 
     # ── Input ────────────────────────────────────────────────────────
     print_section("Input")
     print(f"  {DIM}Email:{RESET} {email_text[:120]}...")
     print(f"  {DIM}Auto-create:{RESET} {auto_create}")
+    print(f"  {DIM}Mode:{RESET} {mode}")
 
     # ── Execute ──────────────────────────────────────────────────────
     print_section("Pipeline Execution")
 
     wf = BankToYnabWorkflow()
+    await wf.setup()  # Register event subscribers (email.received, transaction.created)
     start = time.monotonic()
-    result = await wf.execute({"body": email_text, "auto_create": auto_create})
-    elapsed = (time.monotonic() - start) * 1000
+
+    if via_bus:
+        # Event-driven: simulate what the Gmail webhook does
+        from autopilot.core.bus import get_agent_bus
+
+        bus = get_agent_bus()
+
+        event_payload = {
+            "email_id": "e2e-test-001",
+            "sender": "alertasynotificaciones@bancolombia.com.co",
+            "subject": "Compra realizada",
+            "body": email_text,
+            "label_ids": ["INBOX"],
+            "source": "e2e_test",
+            "email": {
+                "id": "e2e-test-001",
+                "from": "alertasynotificaciones@bancolombia.com.co",
+                "subject": "Compra realizada",
+                "body": email_text,
+                "labelIds": ["INBOX"],
+            },
+        }
+
+        print(f"  {CYAN}Publishing email.received to AgentBus...{RESET}")
+        await bus.publish("email.received", event_payload, sender="e2e_test")
+        elapsed = (time.monotonic() - start) * 1000
+
+        # The bus awaited the subscriber, which called wf.run().
+        # Get the result from the last run.
+        if wf.last_run:
+            result = wf.last_run
+            # Adapt WorkflowRun to look like WorkflowResult for reporting
+            from autopilot.models import WorkflowResult
+            result = WorkflowResult(
+                workflow_id=result.workflow_id,
+                status=result.status,
+                data=result.result,
+                error=result.error,
+                duration_ms=result.duration_ms,
+            )
+        else:
+            print(f"  {RED}No workflow run was triggered by the event!{RESET}")
+            return
+    else:
+        result = await wf.execute({"body": email_text, "auto_create": auto_create})
+        elapsed = (time.monotonic() - start) * 1000
 
     # ── Status ───────────────────────────────────────────────────────
     status_color = GREEN if result.status.value == "success" else RED
@@ -240,6 +287,8 @@ async def run_e2e(email_text: str, auto_create: bool = True):
 
 
 if __name__ == "__main__":
-    email = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_EMAIL
+    email = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else DEFAULT_EMAIL
     auto = "--no-create" not in sys.argv
-    asyncio.run(run_e2e(email, auto_create=auto))
+    via_bus = "--direct" not in sys.argv  # Default: event-driven via AgentBus
+    asyncio.run(run_e2e(email, auto_create=auto, via_bus=via_bus))
+

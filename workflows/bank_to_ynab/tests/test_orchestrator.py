@@ -21,8 +21,8 @@ def workflow_path():
 
 
 @pytest.mark.asyncio
-async def test_pipeline_has_eleven_steps(workflow_path):
-    """Verify the DSL pipeline is constructed with 11 steps accurately."""
+async def test_pipeline_has_ten_steps(workflow_path):
+    """Verify the DSL pipeline is constructed with 10 steps accurately."""
 
     with (
         patch(
@@ -51,7 +51,7 @@ async def test_pipeline_has_eleven_steps(workflow_path):
         pipeline = load_workflow(str(workflow_path / "pipeline.yaml"))
 
         assert pipeline.name == "bank_to_ynab"
-        assert len(pipeline.steps) == 11
+        assert len(pipeline.steps) == 10
 
         step_names = [s.name for s in pipeline.steps]
         assert step_names == [
@@ -64,6 +64,6 @@ async def test_pipeline_has_eleven_steps(workflow_path):
             "categorizer",
             "synthesize_transaction",
             "push_to_ynab",
-            "format_notifier_input",
-            "telegram_notifier",
+            "publish_transaction_event",
         ]
+

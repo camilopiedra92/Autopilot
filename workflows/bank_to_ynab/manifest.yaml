@@ -1,7 +1,7 @@
 name: bank_to_ynab
 display_name: "Bank → YNAB"
 description: "Parse bank notification emails from Bancolombia and automatically create categorized transactions in YNAB."
-version: "4.2.0"
+version: "5.0.0"
 icon: "🏦"
 color: "#4285F4"
 

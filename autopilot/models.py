@@ -246,3 +246,23 @@ class AgentCard(BaseModel):
     )
 
     tags: list[str] = Field(default_factory=list)
+
+
+# ── Platform Events (AgentBus) ───────────────────────────────────────
+
+
+class EmailReceivedEvent(BaseModel):
+    """
+    Typed payload for ``email.received`` AgentBus events.
+
+    Published by the Gmail webhook adapter when new emails arrive.
+    Workflows subscribe and self-match using their manifest trigger config.
+    """
+
+    email_id: str = ""
+    sender: str = ""
+    subject: str = ""
+    body: str = ""
+    label_ids: list[str] = Field(default_factory=list)
+    source: str = "pubsub"  # pubsub | manual | test
+

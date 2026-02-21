@@ -2,9 +2,12 @@
 WorkflowRouter — Routes incoming triggers to the correct workflow.
 
 The router is the central dispatch point that:
-  1. Receives triggers (webhook, Gmail push, scheduled, manual)
+  1. Receives triggers (webhook, scheduled, manual)
   2. Looks up the target workflow(s) in the registry
   3. Dispatches execution to the matched workflow
+
+Note: Gmail push routing is handled event-driven via the AgentBus
+(``email.received`` topic). See ``autopilot/api/webhooks.py``.
 """
 
 from __future__ import annotations
@@ -57,86 +60,6 @@ class WorkflowRouter:
         )
 
         return await workflow.run(TriggerType.WEBHOOK, data)
-
-    # ── Gmail Push Routing ────────────────────────────────────────────
-
-    async def route_gmail_push(
-        self,
-        email_data: dict[str, Any],
-        trigger_source: str = "pubsub",
-    ) -> list[WorkflowRun]:
-        """
-        Route a Gmail message to all workflows that match its criteria.
-
-        Matching Logic:
-          1. Workflow must be enabled.
-          2. Workflow must have a GMAIL_PUSH trigger.
-          3. Trigger 'filter' (sender) must match email 'from' (if set).
-          4. Trigger 'label_ids' must overlap with email 'labelIds' (if set).
-
-        Args:
-            email_data: Dict containing 'id', 'from', 'subject', 'body', 'labelIds'.
-            trigger_source: Origin of the trigger (default: "pubsub").
-
-        Returns:
-            List of WorkflowRun objects (one per matching workflow).
-        """
-        sender = email_data.get("from", "").lower()
-        email_labels = set(email_data.get("labelIds", []))
-
-        # Find all matching workflows
-        matches: list[tuple[Any, Any]] = []  # (workflow, trigger_config)
-
-        for workflow in self._registry.get_all_workflows():
-            if not workflow.manifest.enabled:
-                continue
-
-            for trigger in workflow.manifest.triggers:
-                if trigger.type != TriggerType.GMAIL_PUSH:
-                    continue
-
-                # 1. Match Sender (if filter is set)
-                if trigger.filter:
-                    if trigger.filter.lower() not in sender:
-                        continue
-
-                # 2. Match Labels (if label_ids are set in trigger)
-                if trigger.label_ids:
-                    trigger_labels = set(trigger.label_ids)
-                    if not trigger_labels.intersection(email_labels):
-                        continue
-
-                matches.append((workflow, trigger))
-
-        if not matches:
-            logger.info(
-                "gmail_routing_no_matches", sender=sender, labels=list(email_labels)
-            )
-            return []
-
-        results = []
-        for workflow, trigger in matches:
-            logger.info(
-                "routing_gmail_email",
-                workflow=workflow.manifest.name,
-                sender=sender,
-                trigger_labels=trigger.label_ids,
-            )
-
-            # Prepare trigger data for the workflow
-            trigger_payload = {
-                "source": trigger_source,
-                "email": email_data,
-                "body": email_data.get("body", ""),
-                "subject": email_data.get("subject", ""),
-                "id": email_data.get("id"),
-            }
-
-            # Execute — BaseWorkflow.run() handles setting defaults
-            run = await workflow.run(TriggerType.GMAIL_PUSH, trigger_payload)
-            results.append(run)
-
-        return results
 
     # ── Manual Trigger ────────────────────────────────────────────────
 

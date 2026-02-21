@@ -209,25 +209,64 @@ The platform supports **multi-strategy orchestration** via the `OrchestrationStr
 from autopilot.core import PipelineBuilder, AgentContext
 
 pipeline = (
-    PipelineBuilder("bank_to_ynab")
-    .step(format_parser_prompt)          # Code function → FunctionalAgent
-    .step(create_email_parser(model))    # ADK LlmAgent → ADKAgent
-    .step(match_account)                 # Code function → FunctionalAgent
-    .step(format_categorizer_input)      # Code function → FunctionalAgent
-    .step(create_categorizer(model))     # ADK LlmAgent → ADKAgent
-    .step(synthesize_transaction)        # Code function → FunctionalAgent
-    .step(push_to_ynab)                  # Code function → FunctionalAgent
+    PipelineBuilder("simple_flow")
+    .step(format_input)            # Code function → FunctionalAgent
+    .step(create_parser(model))    # ADK LlmAgent → ADKAgent
+    .step(process_result)          # Code function → FunctionalAgent
+    .build()
+)
+
+result = await pipeline.execute(
+    initial_input={"raw_data": data}
+)
+```
+
+### DAG Pipeline (bank_to_ynab — Production)
+
+The `bank_to_ynab` workflow uses `strategy: dag` so that `match_account` and the researcher branch execute in parallel after email parsing:
+
+```python
+from autopilot.core import DAGBuilder, AgentContext
+
+dag = (
+    DAGBuilder("bank_to_ynab")
+    .node("format_parser_prompt", format_parser_prompt)
+    .node("email_parser", create_email_parser(), dependencies=["format_parser_prompt"])
+    # ⚡ Parallel layer — both depend only on email_parser
+    .node("match_account", match_account, dependencies=["email_parser"])
+    .node("format_researcher_input", format_researcher_input, dependencies=["email_parser"])
+    .node("researcher", create_researcher(), dependencies=["format_researcher_input"])
+    # Categorizer waits for BOTH parallel branches
+    .node("format_categorizer_input", format_categorizer_input, dependencies=["match_account", "researcher"])
+    .node("categorizer", create_categorizer(), dependencies=["format_categorizer_input"])
+    .node("synthesize_transaction", synthesize_transaction, dependencies=["categorizer", "match_account", "researcher"])
+    .node("push_to_ynab", push_to_ynab, dependencies=["synthesize_transaction"])
+    .node("publish_transaction_event", publish_transaction_event, dependencies=["push_to_ynab"])
     .build()
 )
 
 ctx = AgentContext(pipeline_name="bank_to_ynab")
 
-result = await pipeline.execute(
+result = await dag.execute(
     ctx, initial_input={
-        "email_body": raw_email,
+        "body": raw_email,
         "auto_create": True,
     }
 )
+```
+
+**Execution layers (Kahn's topological sort):**
+
+```
+Layer 0: [format_parser_prompt]
+Layer 1: [email_parser]
+Layer 2: [match_account, format_researcher_input]  ← parallel ⚡
+Layer 3: [researcher]
+Layer 4: [format_categorizer_input]
+Layer 5: [categorizer]
+Layer 6: [synthesize_transaction]
+Layer 7: [push_to_ynab]
+Layer 8: [publish_transaction_event]
 ```
 
 ### Composition Patterns
@@ -685,6 +724,107 @@ async def run(self, ctx, input):
 | **Per-topic history**     | Ring buffer (`deque(maxlen=100)`) for replay/debug           |
 | **Concurrent dispatch**   | Handlers run via `asyncio.gather` per publish call           |
 | **Singleton**             | `get_agent_bus()` / `reset_agent_bus()`                      |
+
+#### `ctx` Injection in Pipeline Steps
+
+Any pipeline step can request an `AgentContext` by declaring a `ctx: AgentContext` parameter. The `FunctionalAgent` auto-injects it (mirroring ADK's `ToolContext` pattern). This enables steps to publish events, access memory, or interact with the session **at any point** in the pipeline:
+
+```python
+from autopilot.core.context import AgentContext
+
+async def my_step(ctx: AgentContext, payee: str, **state) -> dict:
+    await ctx.publish("transaction.parsed", {"payee": payee})
+    ctx.remember("Last payee processed: " + payee)
+    return {"processed": True}
+```
+
+#### SubscriberRegistry — Reactive Event Handlers (Phase 5b)
+
+The `SubscriberRegistry` manages lifecycle of event subscribers at the platform level. Workflows register handlers during their `setup()` lifecycle hook — the registry wires them to the global `AgentBus`.
+
+```python
+from autopilot.core.subscribers import get_subscriber_registry
+
+registry = get_subscriber_registry()
+registry.register("transaction.created", on_tx_created, name="telegram_notifier")
+
+# Introspect active subscriptions
+print(registry.registered)  # [{"name": "telegram_notifier", "topic": "transaction.created", ...}]
+
+# Clean teardown
+registry.unregister_all()
+```
+
+**Topic naming convention**: `domain.verb` — e.g., `transaction.created`, `email.received`, `account.matched`, `category.overspent`.
+
+**Adding a new subscriber**:
+
+1. Create an async handler `async def on_event(msg: AgentMessage) -> None`
+2. Register it in the workflow's `setup()` via `registry.register(topic, handler, name=...)`
+3. The bus handles concurrency, isolation, and tracing automatically
+
+#### Event-Driven Triggers — Publish + Await (Phase 5c)
+
+External triggers (Gmail Pub/Sub, webhooks) are **thin event adapters** that publish typed events to the AgentBus. Workflows react as subscribers and self-match using their manifest trigger config. The bus `await`s all subscribers before the HTTP response, ensuring Pub/Sub only ACKs after full processing.
+
+```
+Pub/Sub Push → webhook (thin adapter)
+                  │
+                  ▼
+          bus.publish("email.received", payload)
+                  │
+                  ▼ (AgentBus — in-process, asyncio.gather)
+          ┌───────┴───────┐
+          ▼               ▼ (future workflows)
+    bank_to_ynab     expense_auditor
+          │
+          ▼
+    bus.publish("transaction.created")
+          │
+          ▼
+    telegram_subscriber
+```
+
+**Webhook adapter** (publishes events, never calls workflows directly):
+
+```python
+# autopilot/api/webhooks.py
+@router.post("/gmail/webhook")
+async def gmail_push_webhook(request: Request):
+    emails = await pubsub.handle_notification(pubsub_message)
+    bus = get_agent_bus()
+    for email in emails:
+        await bus.publish("email.received", {
+            "email_id": email.get("id", ""),
+            "sender": email.get("from", ""),
+            "body": email.get("body", ""),
+            "label_ids": email.get("labelIds", []),
+            "email": email,  # Full payload for workflows
+        }, sender="gmail_webhook")
+    return {"status": "ok", "emails_published": len(emails)}
+```
+
+**Workflow subscribes and self-matches** via `BaseWorkflow._matches_gmail_trigger()`:
+
+```python
+class BankToYnabWorkflow(BaseWorkflow):
+    async def setup(self):
+        registry = get_subscriber_registry()
+        registry.register("email.received", self._on_email_received, name="bank_to_ynab_email_trigger")
+        registry.register("transaction.created", on_transaction_created, name="telegram_notifier")
+
+    async def _on_email_received(self, msg):
+        if not self._matches_gmail_trigger(msg.payload):
+            return  # Not for this workflow
+        await self.run(TriggerType.GMAIL_PUSH, trigger_payload)
+```
+
+`_matches_gmail_trigger()` is a `BaseWorkflow` method that checks the email's sender and label IDs against the workflow's manifest `GMAIL_PUSH` trigger config. Each workflow decides independently if an email belongs to it — the bus delivers to all, each filters.
+
+| Platform Event        | Publisher                                   | Subscribers                         | Model                |
+| --------------------- | ------------------------------------------- | ----------------------------------- | -------------------- |
+| `email.received`      | Gmail webhook adapter                       | Workflows with GMAIL_PUSH triggers  | `EmailReceivedEvent` |
+| `transaction.created` | Pipeline step (`publish_transaction_event`) | Telegram notifier, future: Airtable | `TransactionEvent`   |
 
 ### Declarative DSL — YAML Workflows (Phase 6)
 
