@@ -21,15 +21,15 @@ To maintain a world-class, edge-native architecture, we strictly adhere to the f
 
 ## 2. CI/CD Pipeline (Source of Truth)
 
-The primary and **only recommended** way to deploy to production is via Git push to the `main` branch, triggering Cloud Build (`cloudbuild.yaml`).
+The primary and **only recommended** way to deploy to production is via Git push to the `master` branch, triggering the GitHub Actions workflow (`.github/workflows/ci.yml`).
 
 This guarantees:
 
 1. Automated unit tests pass before the image is built.
-2. Kaniko builds a highly-optimized, cached, multi-stage Docker image.
-3. Secrets, environment variables, and volume mounts are deterministically injected every time.
+2. Buildx builds a highly-optimized, cached Docker image directly pushed to Artifact Registry.
+3. Secrets, environment variables, and workload identity settings are deterministically injected every time.
 
-If you add a new Secret Manager variable or require a new volume mount, you **must register it** in `cloudbuild.yaml` within the `gcloud run deploy` step.
+If you add a new Secret Manager variable, you **must register it** in `.github/workflows/ci.yml` within the `deploy-cloudrun` step flags.
 
 ## 3. Break-Glass / Manual Deployment (CLI)
 
@@ -52,7 +52,7 @@ gcloud config set project antigravity-bank-ynab
 
 ```bash
 gcloud run deploy bank-to-ynab \
-  --image=us-central1-docker.pkg.dev/antigravity-bank-ynab/mcp-cloud-run-deployments/bank-to-ynab \
+  --image=us-central1-docker.pkg.dev/antigravity-bank-ynab/bank-to-ynab/bank-to-ynab:latest \
   --region=us-central1 \
   --project=antigravity-bank-ynab \
   --platform=managed \
@@ -63,8 +63,7 @@ gcloud run deploy bank-to-ynab \
   --max-instances=5 \
   --concurrency=80 \
   --timeout=120s \
-  --set-env-vars=PYTHONUNBUFFERED=1,GOOGLE_CLOUD_PROJECT=antigravity-bank-ynab,GCP_PUBSUB_TOPIC=projects/antigravity-bank-ynab/topics/gmail-notifications,GMAIL_SENDER_FILTER=alertasynotificaciones \
-  --set-secrets=GOOGLE_API_KEY=google-api-key:latest,YNAB_ACCESS_TOKEN=ynab-access-token:latest,API_KEY_SECRET=api-key-secret:latest,TODOIST_API_TOKEN=todoist-api-token:latest,AIRTABLE_PERSONAL_ACCESS_TOKEN=airtable-personal-access-token:latest,TELEGRAM_BOT_TOKEN=telegram-bot-token:latest,/secrets/credentials/credentials.json=gmail-credentials:latest,/secrets/token/token.json=gmail-token:latest \
+  --set-secrets=GOOGLE_API_KEY=google-api-key:latest,YNAB_ACCESS_TOKEN=ynab-access-token:latest \
   --cpu-boost
 ```
 
