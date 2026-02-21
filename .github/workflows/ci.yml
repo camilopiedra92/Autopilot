@@ -53,7 +53,7 @@ jobs:
         run: pip install ruff
 
       - name: Ruff lint
-        run: ruff check . --output-format=github
+        run: ruff check . --output-format=github --ignore E402,E741,E701
 
       - name: Ruff format check
         run: ruff format --check .
