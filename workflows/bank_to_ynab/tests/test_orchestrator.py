@@ -1,10 +1,10 @@
 """
-Tests for the bank_to_ynab declarative pipeline construction and execution.
+Tests for the bank_to_ynab declarative DAG pipeline construction.
 
 Validates:
-  - Workflow rejects empty emails
-  - Workflow formats inputs correctly for the DSL pipeline
-  - DSL Pipeline is built with correct steps from pipeline.yaml
+  - DSL DAG is built with correct nodes from pipeline.yaml
+  - Node names match expected set
+  - Layer structure reflects parallel execution topology
 """
 
 import pytest
@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 from pathlib import Path
 
 from autopilot.core import load_workflow
+from autopilot.core.dag import DAGRunner
 
 
 @pytest.fixture
@@ -20,9 +21,23 @@ def workflow_path():
     return Path(__file__).parent.parent
 
 
+EXPECTED_NODE_NAMES = {
+    "format_parser_prompt",
+    "email_parser",
+    "match_account",
+    "format_researcher_input",
+    "researcher",
+    "format_categorizer_input",
+    "categorizer",
+    "synthesize_transaction",
+    "push_to_ynab",
+    "publish_transaction_event",
+}
+
+
 @pytest.mark.asyncio
-async def test_pipeline_has_ten_steps(workflow_path):
-    """Verify the DSL pipeline is constructed with 10 steps accurately."""
+async def test_dag_has_ten_nodes(workflow_path):
+    """Verify the DSL DAG is constructed with 10 nodes accurately."""
 
     with (
         patch(
@@ -47,22 +62,32 @@ async def test_pipeline_has_ten_steps(workflow_path):
         mock_cat_agent.name = "categorizer"
         mock_cat.return_value = mock_cat_agent
 
-        # Load the pipeline purely from YAML
-        pipeline = load_workflow(str(workflow_path / "pipeline.yaml"))
+        # Load the DAG pipeline from YAML
+        dag = load_workflow(str(workflow_path / "pipeline.yaml"))
 
-        assert pipeline.name == "bank_to_ynab"
-        assert len(pipeline.steps) == 10
+        assert isinstance(dag, DAGRunner)
+        assert dag.name == "bank_to_ynab"
+        assert len(dag._nodes) == 10
+        assert set(dag._nodes.keys()) == EXPECTED_NODE_NAMES
 
-        step_names = [s.name for s in pipeline.steps]
-        assert step_names == [
-            "format_parser_prompt",
-            "email_parser",
-            "match_account",
-            "format_researcher_input",
-            "researcher",
-            "format_categorizer_input",
-            "categorizer",
-            "synthesize_transaction",
-            "push_to_ynab",
-            "publish_transaction_event",
+        # Verify parallel layer structure:
+        # Layer 0: [format_parser_prompt] — root
+        # Layer 1: [email_parser]
+        # Layer 2: [format_researcher_input, match_account] — PARALLEL ⚡
+        # Layer 3: [researcher]
+        # Layer 4: [format_categorizer_input]
+        # Layer 5: [categorizer]
+        # Layer 6: [synthesize_transaction]
+        # Layer 7: [push_to_ynab]
+        # Layer 8: [publish_transaction_event]
+        assert len(dag._layers) >= 2  # At least some parallelism exists
+
+        # The parallel layer must contain both match_account and format_researcher_input
+        parallel_layer = [
+            layer
+            for layer in dag._layers
+            if "match_account" in layer and "format_researcher_input" in layer
         ]
+        assert len(parallel_layer) == 1, (
+            "match_account and format_researcher_input must be in the same parallel layer"
+        )
