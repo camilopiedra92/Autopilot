@@ -59,9 +59,13 @@ class TestWorkflowRouterLogic:
         )
 
         # Should match
-        assert wf._matches_gmail_trigger({"sender": "alerts@bank.com", "label_ids": ["INBOX"]})
+        assert wf._matches_gmail_trigger(
+            {"sender": "alerts@bank.com", "label_ids": ["INBOX"]}
+        )
         # Should not match
-        assert not wf._matches_gmail_trigger({"sender": "nope@other.com", "label_ids": ["INBOX"]})
+        assert not wf._matches_gmail_trigger(
+            {"sender": "nope@other.com", "label_ids": ["INBOX"]}
+        )
 
     async def test_matches_gmail_trigger_disabled_workflow(self):
         """Disabled workflows never match."""
@@ -97,7 +101,9 @@ class TestWorkflowRouterLogic:
         )
 
         assert wf._matches_gmail_trigger({"sender": "x@y.com", "label_ids": ["INBOX"]})
-        assert not wf._matches_gmail_trigger({"sender": "x@y.com", "label_ids": ["SPAM"]})
+        assert not wf._matches_gmail_trigger(
+            {"sender": "x@y.com", "label_ids": ["SPAM"]}
+        )
 
     async def test_email_received_event_via_bus(self):
         """email.received published on bus is delivered to subscribers."""
@@ -114,4 +120,3 @@ class TestWorkflowRouterLogic:
 
         assert len(received) == 1
         assert received[0]["sender"] == "a@b.com"
-

@@ -141,6 +141,7 @@ class TestCtxInjection:
     @pytest.mark.asyncio
     async def test_ctx_injection_preserves_other_params(self):
         """ctx injection doesn't interfere with normal parameter extraction."""
+
         async def step(ctx: AgentContext, payee: str, amount: float) -> dict:
             return {"payee": payee, "amount": amount, "has_ctx": ctx is not None}
 
@@ -370,9 +371,7 @@ class TestTelegramSubscriber:
         )
 
         # Mock the ADKAgent.invoke to avoid actual LLM calls
-        with patch(
-            "autopilot.core.agent.ADKAgent"
-        ) as MockADKAgent:
+        with patch("autopilot.core.agent.ADKAgent") as MockADKAgent:
             mock_agent = AsyncMock()
             mock_agent.invoke = AsyncMock(return_value={})
             MockADKAgent.return_value = mock_agent

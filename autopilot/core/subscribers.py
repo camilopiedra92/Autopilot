@@ -82,9 +82,7 @@ class SubscriberRegistry:
         """
         bus = get_agent_bus()
         sub = bus.subscribe(topic, handler)
-        self._entries.append(
-            _RegistryEntry(name=name, topic=topic, subscription=sub)
-        )
+        self._entries.append(_RegistryEntry(name=name, topic=topic, subscription=sub))
         logger.info(
             "subscriber_registered",
             name=name,

@@ -815,4 +815,3 @@ class TestTelegramNotifier:
 
         agent = create_telegram_notifier()
         assert len(agent.tools) >= 1
-

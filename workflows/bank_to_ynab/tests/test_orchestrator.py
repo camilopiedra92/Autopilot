@@ -66,4 +66,3 @@ async def test_pipeline_has_ten_steps(workflow_path):
             "push_to_ynab",
             "publish_transaction_event",
         ]
-

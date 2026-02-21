@@ -239,9 +239,7 @@ class BaseWorkflow:
         if not self.manifest.enabled:
             return False
 
-        sender = (
-            email_data.get("sender", "") or email_data.get("from", "")
-        ).lower()
+        sender = (email_data.get("sender", "") or email_data.get("from", "")).lower()
         email_labels = set(
             email_data.get("label_ids", []) or email_data.get("labelIds", [])
         )
@@ -255,7 +253,9 @@ class BaseWorkflow:
                 continue
 
             # Match label IDs
-            if trigger.label_ids and not set(trigger.label_ids).intersection(email_labels):
+            if trigger.label_ids and not set(trigger.label_ids).intersection(
+                email_labels
+            ):
                 continue
 
             return True  # Match found

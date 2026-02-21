@@ -147,6 +147,7 @@ async def run_e2e(email_text: str, auto_create: bool = True, via_bus: bool = Fal
             result = wf.last_run
             # Adapt WorkflowRun to look like WorkflowResult for reporting
             from autopilot.models import WorkflowResult
+
             result = WorkflowResult(
                 workflow_id=result.workflow_id,
                 status=result.status,
@@ -287,8 +288,11 @@ async def run_e2e(email_text: str, auto_create: bool = True, via_bus: bool = Fal
 
 
 if __name__ == "__main__":
-    email = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else DEFAULT_EMAIL
+    email = (
+        sys.argv[1]
+        if len(sys.argv) > 1 and not sys.argv[1].startswith("--")
+        else DEFAULT_EMAIL
+    )
     auto = "--no-create" not in sys.argv
     via_bus = "--direct" not in sys.argv  # Default: event-driven via AgentBus
     asyncio.run(run_e2e(email, auto_create=auto, via_bus=via_bus))
-

@@ -265,4 +265,3 @@ class EmailReceivedEvent(BaseModel):
     body: str = ""
     label_ids: list[str] = Field(default_factory=list)
     source: str = "pubsub"  # pubsub | manual | test
-
