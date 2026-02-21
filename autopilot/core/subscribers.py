@@ -42,7 +42,6 @@ import structlog
 from typing import Any
 
 from autopilot.core.bus import (
-    AgentBus,
     MessageHandler,
     Subscription,
     get_agent_bus,

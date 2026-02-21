@@ -8,7 +8,7 @@ the event from the ``push_to_ynab`` step's ``final_result_data`` output.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Any
 
 

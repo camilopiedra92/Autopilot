@@ -11,13 +11,12 @@ Covers:
 
 import asyncio
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from autopilot.core.agent import FunctionalAgent
-from autopilot.core.bus import AgentBus, AgentMessage, get_agent_bus, reset_agent_bus
+from autopilot.core.bus import AgentMessage, get_agent_bus, reset_agent_bus
 from autopilot.core.context import AgentContext
 from autopilot.core.subscribers import (
-    SubscriberRegistry,
     get_subscriber_registry,
     reset_subscriber_registry,
 )

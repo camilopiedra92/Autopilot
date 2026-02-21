@@ -430,7 +430,6 @@ async def publish_transaction_event(ctx: "AgentContext", **state) -> dict:
     Uses ``ctx`` injection (auto-provided by FunctionalAgent when the parameter
     is annotated as ``AgentContext``).
     """
-    from autopilot.core.context import AgentContext  # noqa: F811
     from workflows.bank_to_ynab.models.events import TransactionEvent
 
     result = state.get("final_result_data", {})
