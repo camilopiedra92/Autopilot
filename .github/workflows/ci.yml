@@ -175,7 +175,7 @@ jobs:
             --max-instances=5
             --concurrency=80
             --timeout=120s
-            --startup-cpu-boost
+            --cpu-boost
             --set-secrets=GOOGLE_API_KEY=google-api-key:latest,YNAB_ACCESS_TOKEN=ynab-access-token:latest
 
       - name: Smoke test deployed service
