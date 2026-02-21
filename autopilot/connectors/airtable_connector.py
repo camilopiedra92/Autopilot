@@ -16,7 +16,7 @@ import os
 import time
 import structlog
 import httpx
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from autopilot.connectors.base_connector import BaseConnector

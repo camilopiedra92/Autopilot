@@ -85,7 +85,7 @@ class PipelineRunner:
             PipelineResult with final text, parsed JSON, session state, and timing.
         """
         session_id = f"pipeline_{uuid4().hex[:12]}"
-        event_bus = get_event_bus()
+        get_event_bus()
         effective_stream_id = stream_session_id or session_id
 
         return await self._run_adk_agent(pipeline, message, initial_state, effective_stream_id)

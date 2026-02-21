@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 from autopilot.core.context import AgentContext
 from autopilot.core.agent import BaseAgent, FunctionalAgent, ADKAgent, functional_agent
-from autopilot.core.pipeline import Pipeline, PipelineBuilder, PipelineExecutionResult
+from autopilot.core.pipeline import Pipeline, PipelineBuilder
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1269,8 +1269,8 @@ class TestBaseWorkflowStrategy:
 #  V3 Phase 3 — Session Service Tests
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-from autopilot.core.session import InMemorySessionService, BaseSessionService
-from autopilot.core.memory import InMemoryMemoryService, BaseMemoryService, Observation
+from autopilot.core.session import InMemorySessionService
+from autopilot.core.memory import InMemoryMemoryService
 
 
 class TestInMemorySessionService:

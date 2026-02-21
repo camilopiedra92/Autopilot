@@ -1,5 +1,4 @@
 import pytest
-import json
 from unittest.mock import AsyncMock, patch
 from autopilot.core.session import RedisSessionService
 

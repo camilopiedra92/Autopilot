@@ -327,7 +327,7 @@ class AgentBus:
         This ensures one failing subscriber never blocks others.
         """
         with tracer.start_as_current_span(
-            f"bus.handler",
+            "bus.handler",
             attributes={
                 "topic": msg.topic,
                 "handler": handler.__name__ if hasattr(handler, "__name__") else str(handler),

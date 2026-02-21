@@ -1,8 +1,7 @@
 import pytest
-from unittest.mock import AsyncMock
 
 from autopilot.core.context import AgentContext
-from autopilot.core.pipeline import Pipeline, PipelineExecutionResult
+from autopilot.core.pipeline import Pipeline
 from autopilot.core.agent import BaseAgent
 
 class MockStep(BaseAgent[dict, dict]):

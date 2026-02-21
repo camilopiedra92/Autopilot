@@ -725,7 +725,7 @@ class TestFullPipelineE2E:
             )
 
         # ── Summary log ──────────────────────────────────────────
-        print(f"\n✅ E2E DirectTV Purchase Complete:")
+        print("\n✅ E2E DirectTV Purchase Complete:")
         print(f"   Payee:    {final.get('payee')}")
         print(f"   Amount:   COP {final.get('amount'):,.0f}")
         print(f"   Category: {balance.get('category_name')}")

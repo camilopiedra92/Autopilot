@@ -16,7 +16,6 @@ Usage:
 """
 
 import asyncio
-import json
 import structlog
 from datetime import datetime, timezone
 from typing import AsyncGenerator

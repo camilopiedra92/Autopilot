@@ -20,14 +20,11 @@ import uvicorn
 from autopilot.version import VERSION, APP_NAME
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
 from autopilot.config import get_platform_settings as get_settings
-from autopilot.logging import setup_logging
-from autopilot.observability import get_tracer
 
 # Platform imports
 from autopilot.registry import get_registry

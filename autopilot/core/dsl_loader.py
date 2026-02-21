@@ -48,7 +48,6 @@ from autopilot.core.agent import (
 )
 from autopilot.core.dag import DAGBuilder, DAGRunner
 from autopilot.core.dsl_schema import (
-    DSLNodeDef,
     DSLStepDef,
     DSLStepType,
     DSLStrategy,

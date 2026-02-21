@@ -33,11 +33,11 @@ import asyncio
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from typing import Any, Callable, Union
+from typing import Any
 
 import structlog
 
-from autopilot.core.agent import BaseAgent, FunctionalAgent, ADKAgent
+from autopilot.core.agent import BaseAgent
 from autopilot.core.context import AgentContext
 from autopilot.core.pipeline import PipelineExecutionResult, _wrap_step, StepLike
 from autopilot.errors import DAGCycleError, DAGDependencyError

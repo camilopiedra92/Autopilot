@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from google.adk.agents import LlmAgent, Agent
+from google.adk.agents import LlmAgent
 from google.genai import types
 
 from autopilot.agents.callbacks import (

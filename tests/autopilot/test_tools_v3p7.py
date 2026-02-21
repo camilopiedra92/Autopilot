@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from autopilot.core.tools.callbacks import (
     ToolCallbackManager,
@@ -31,7 +31,6 @@ from autopilot.core.tools.auth import (
     reset_auth_manager,
 )
 from autopilot.core.tools.long_running import (
-    OperationStatus,
     OperationTracker,
     LongRunningTool,
     get_operation_tracker,
@@ -39,7 +38,6 @@ from autopilot.core.tools.long_running import (
 )
 from autopilot.core.tools.registry import (
     ToolRegistry,
-    ToolInfo,
     get_tool_registry,
     reset_tool_registry,
 )

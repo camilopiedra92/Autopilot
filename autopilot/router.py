@@ -14,8 +14,6 @@ from typing import Any
 
 from autopilot.models import (
     TriggerType,
-    RunStatus,
-    WorkflowResult,
     WorkflowRun,
 )
 from autopilot.registry import WorkflowRegistry, get_registry

@@ -2,7 +2,7 @@ import pytest
 import httpx
 from unittest.mock import AsyncMock, MagicMock
 
-from autopilot.errors import ConnectorError, ConnectorRateLimitError
+from autopilot.errors import ConnectorError
 from autopilot.connectors.telegram_connector import AsyncTelegramClient, TelegramConnector
 
 

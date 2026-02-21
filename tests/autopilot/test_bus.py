@@ -10,7 +10,6 @@ Covers:
   - AgentContext integration: ctx.bus, ctx.publish(), ctx.subscribe()
 """
 
-import asyncio
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 

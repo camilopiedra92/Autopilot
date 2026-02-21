@@ -14,7 +14,6 @@ Covers:
 """
 
 import pytest
-from typing import Any
 from unittest.mock import patch, MagicMock, AsyncMock
 
 from autopilot.core.tools.registry import (

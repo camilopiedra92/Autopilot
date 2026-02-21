@@ -7,7 +7,6 @@ invocation) gets the same behavior.
 """
 
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 
 from autopilot.base_workflow import BaseWorkflow
 from autopilot.models import (

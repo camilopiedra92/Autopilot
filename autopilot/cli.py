@@ -178,22 +178,22 @@ def process_input(input_data: InputData) -> dict:
 
     if custom:
         print("📁 Files created:")
-        print(f"  ├── manifest.yaml    (A2A metadata & triggers)")
-        print(f"  └── workflow.py      (custom execute() logic)")
+        print("  ├── manifest.yaml    (A2A metadata & triggers)")
+        print("  └── workflow.py      (custom execute() logic)")
         print()
         print("Next steps:")
         print(f"  1. Implement execute() in: workflows/{name}/workflow.py")
         print(f"  2. Edit metadata in: workflows/{name}/manifest.yaml")
     else:
         print("📁 Files created:")
-        print(f"  ├── manifest.yaml    (A2A metadata & triggers)")
-        print(f"  ├── pipeline.yaml    (DSL pipeline definition)")
-        print(f"  └── steps.py         (pipeline step functions + @tool examples)")
+        print("  ├── manifest.yaml    (A2A metadata & triggers)")
+        print("  ├── pipeline.yaml    (DSL pipeline definition)")
+        print("  └── steps.py         (pipeline step functions + @tool examples)")
         print()
         print("Next steps:")
         print(f"  1. Add step functions in: workflows/{name}/steps.py")
         print(f"  2. Wire them in: workflows/{name}/pipeline.yaml")
-        print(f"  3. Use @tool decorator for reusable tools (see steps.py examples)")
+        print("  3. Use @tool decorator for reusable tools (see steps.py examples)")
 
     print(f"  {4 if not custom else 3}. Restart the platform — it auto-discovers your workflow!")
 

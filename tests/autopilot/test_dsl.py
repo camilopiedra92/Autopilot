@@ -13,16 +13,12 @@ Covers:
   - End-to-end: YAML file → execute → correct state
 """
 
-import asyncio
 import pytest
 import textwrap
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import yaml
 
-from autopilot.core.context import AgentContext
 from autopilot.core.agent import BaseAgent, FunctionalAgent
 from autopilot.core.pipeline import Pipeline
 from autopilot.core.dag import DAGRunner

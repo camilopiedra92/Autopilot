@@ -9,8 +9,7 @@ Handles:
 from __future__ import annotations
 
 import structlog
-from fastapi import APIRouter, HTTPException, Request, Body, Depends
-from typing import Any
+from fastapi import APIRouter, HTTPException, Request
 
 from autopilot.router import get_router
 from autopilot.connectors import get_connector_registry

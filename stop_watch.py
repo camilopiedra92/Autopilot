@@ -1,6 +1,5 @@
 import asyncio
 from autopilot.connectors import GmailConnector
-from autopilot.connectors import PubSubConnector
 
 async def main():
     print("Initializing GmailConnector...")

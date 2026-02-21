@@ -4,7 +4,6 @@ Web Researcher Agent Factory for Bank→YNAB Workflow.
 Resolves merchant names and details to enrich the transaction payload.
 """
 
-from pathlib import Path
 from typing import Any
 
 from autopilot.agents.base import create_platform_agent

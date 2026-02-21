@@ -31,7 +31,7 @@ import abc
 import asyncio
 import inspect
 import time
-from typing import Any, Callable, Generic, TypeVar, get_type_hints
+from typing import Any, Callable, Generic, TypeVar
 
 import structlog
 from opentelemetry import trace
@@ -92,7 +92,7 @@ class BaseAgent(abc.ABC, Generic[InputT, OutputT]):
         and catches exceptions with structured error handling.
         """
         with tracer.start_as_current_span(
-            f"agent.invoke",
+            "agent.invoke",
             attributes={
                 "agent_name": self.name,
                 "agent_type": self.__class__.__name__,

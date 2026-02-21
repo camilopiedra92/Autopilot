@@ -1,10 +1,8 @@
-import os
 import pytest
 import httpx
 from unittest.mock import AsyncMock, MagicMock
 
 # Re-exporting from our actual codebase
-from autopilot.errors import ConnectorError, ConnectorRateLimitError
 from autopilot.connectors.airtable_connector import AsyncAirtableClient, AirtableConnector
 
 @pytest.fixture

@@ -14,10 +14,8 @@ to give **complete observability** across LLM calls AND tool/API calls.
 from __future__ import annotations
 
 import time
-import asyncio
 import structlog
 from typing import Any, Optional
-from collections import defaultdict
 
 from google.adk.tools import BaseTool
 from google.adk.tools.tool_context import ToolContext

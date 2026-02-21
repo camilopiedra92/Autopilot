@@ -26,10 +26,9 @@ import importlib
 import inspect
 import structlog
 from pathlib import Path
-from typing import Any
 
 from autopilot.base_workflow import BaseWorkflow
-from autopilot.models import WorkflowInfo, WorkflowManifest
+from autopilot.models import WorkflowInfo
 
 logger = structlog.get_logger(__name__)
 
