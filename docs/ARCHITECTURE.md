@@ -1067,3 +1067,28 @@ Use the **Connector Pattern** for external integrations.
 2. **Schema-First**: Define Pydantic models for inputs and outputs before writing logic.
 3. **Test-Driven**: Update `tests/` when modifying logic.
 4. **No V2**: There is no legacy code path. Only edge-native patterns.
+
+## 10. CI/CD & Deployment Standards
+
+We maintain a World-Class CI/CD pipeline built on GitHub Actions, enforcing strict validation before deployment to Google Cloud Run.
+
+### 10.1 Formatting and Linting
+
+- **Single Source of Truth**: Ruff is the official linter and formatter.
+- **Configuration**: All linting rules (e.g., ignores for `E402`, `E741`) MUST be defined in `ruff.toml` at the root of the repository.
+- **CI Enforcement**: The CI pipeline runs `ruff check .` and `ruff format --check .` agnostically. ⛔️ **NEVER** pass `--ignore` flags directly in the CI workflow commands.
+
+### 10.2 Continuous Integration (CI)
+
+Our pipeline strictly executes in the following sequence for every push and PR, or via `workflow_dispatch`:
+
+1. **Lint & Format**: Enforces `ruff` standards.
+2. **Unit Tests**: Runs `pytest` against both platform-level (`tests/`) and workflow-level (`workflows/*/tests/`) test suites.
+
+### 10.3 Continuous Deployment (CD)
+
+Deploys to production (`master` branch) are fully automated and secure:
+
+1. **Workload Identity Federation (WIF)**: We use Google Cloud WIF (`github-pool` / `github-provider`) for keyless authentication. ⛔️ **NEVER** use long-lived JSON service account keys (`credentials.json`).
+2. **Build & Push**: Docker images are built and pushed to Google Artifact Registry.
+3. **Cloud Run Deployment**: The service is updated with the new image, enforcing edge-native constraints (`--min-instances=0`, `--cpu-boost`, secrets injected from Secret Manager).
