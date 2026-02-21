@@ -1,0 +1,31 @@
+name: example_agent
+display_name: "Example Agent"
+version: "1.0.0"
+description: "Describe what this agent does."
+type: llm # llm | code | custom
+model: gemini-3-flash-preview # Use platform default (e.g. gemini-3-flash-preview)
+
+input:
+  schema_ref: "InputModelName"
+  fields: [field1, field2]
+
+output:
+  schema_ref: "OutputModelName"
+  fields: [field1, field2, field3]
+
+# Tools the agent can invoke (LLM agents only)
+tools: []
+  # - name: tool_function_name
+  #   description: "What the tool does"
+
+# Guardrail callbacks (LLM agents only)
+guardrails:
+  before_model: []
+  after_model: []
+
+# Session state keys this agent reads/writes
+state_keys:
+  reads: ""
+  writes: ""
+
+tags: []

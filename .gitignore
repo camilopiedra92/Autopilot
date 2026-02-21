@@ -1,0 +1,20 @@
+venv/
+venv_old/
+__pycache__/
+.env
+.env.local
+.env.keys
+*.json
+!package.json
+!tsconfig.json
+!manifest.json
+!workflows/**/*.json
+.DS_Store
+.local_tmp/
+.local_cache/
+.pytest_cache/
+*.egg-info/
+
+# Sensitive OAuth files (explicit for clarity, also covered by *.json)
+credentials.json
+token.json

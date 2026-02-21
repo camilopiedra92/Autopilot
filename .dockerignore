@@ -1,0 +1,48 @@
+# ── Secrets & credentials (NEVER include in Docker image) ───────────
+.env
+.env.*
+credentials.json
+token.json
+
+# ── Python artifacts ─────────────────────────────────────────────────
+venv/
+venv_old/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Testing & dev cache ─────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+tests/
+
+# ── Local caches ─────────────────────────────────────────────────────
+.local_cache/
+.local_tmp/
+
+# ── Git & CI/CD (not needed in runtime image) ────────────────────────
+.git/
+.github/
+.gitignore
+
+# ── IDE & OS files ───────────────────────────────────────────────────
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Documentation (not needed in runtime) ────────────────────────────
+*.md
+!README.md
+
+# ── Agent config (dev-only) ──────────────────────────────────────────
+.agent/
+.gemini/

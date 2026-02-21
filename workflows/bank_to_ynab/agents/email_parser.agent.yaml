@@ -1,0 +1,24 @@
+name: email_parser
+display_name: "Email Parser"
+version: "1.0.0"
+description: "Extracts structured transaction data from raw bank notification emails (Bancolombia, Davivienda)."
+type: llm
+model: gemini-3-flash-preview
+stage: 1
+
+input:
+  schema_ref: "raw_email_html"
+  fields: [email_body]
+
+output:
+  schema_ref: "ParsedEmail"
+  fields: [date, payee, amount, card_suffix, memo, is_successful]
+
+guardrails:
+  before_model: [input_guardrail, before_model_logger]
+  after_model: [after_model_logger, output_guardrail]
+
+state_keys:
+  writes: parsed_email
+
+tags: [extraction, nlp, bancolombia]

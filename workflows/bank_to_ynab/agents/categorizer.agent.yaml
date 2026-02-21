@@ -1,0 +1,30 @@
+name: categorizer
+display_name: "Categorizer"
+version: "1.0.0"
+description: "Assigns YNAB categories to transactions based on payee/merchant analysis."
+type: llm
+model: gemini-3-flash-preview
+stage: 3
+
+input:
+  schema_ref: "ParsedEmail + MatchedAccount"
+
+output:
+  schema_ref: "CategorizedTransaction"
+  fields: [category_id, category_name, category_reasoning]
+
+tools:
+  - name: get_ynab_categories
+    description: "Fetches all active YNAB categories for a given budget"
+
+guardrails:
+  before_model: [before_model_logger]
+  after_model: [after_model_logger]
+  before_tool: [before_tool_logger]
+  after_tool: [after_tool_logger]
+
+state_keys:
+  reads: "parsed_email, matched_account"
+  writes: categorized_tx
+
+tags: [categorization, ynab, tool-use]

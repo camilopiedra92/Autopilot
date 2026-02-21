@@ -1,0 +1,45 @@
+name: bank_to_ynab
+display_name: "Bank → YNAB"
+description: "Parse bank notification emails from Bancolombia and automatically create categorized transactions in YNAB."
+version: "4.2.0"
+icon: "🏦"
+color: "#4285F4"
+
+triggers:
+  - type: gmail_push
+    filter: "alertasynotificaciones"
+    description: "Bancolombia email notifications"
+  - type: webhook
+    path: /process-email
+    description: "Process email via HTTP API"
+  - type: manual
+    description: "Manual trigger via dashboard"
+
+settings:
+  - key: ynab_access_token
+    type: secret
+    required: true
+    description: "YNAB Personal Access Token"
+  - key: ynab_budget_id
+    type: string
+    required: false
+    description: "Default YNAB Budget ID"
+  - key: gmail_sender_filter
+    type: string
+    required: false
+    default: "alertasynotificaciones"
+    description: "Gmail sender to filter for bank emails"
+  - key: auto_create
+    type: boolean
+    required: false
+    default: true
+    description: "Automatically create transactions in YNAB"
+
+agents:
+  cards_dir: agents/ # *.agent.yaml files discovered automatically
+
+tags:
+  - finance
+  - ynab
+  - banking
+  - email

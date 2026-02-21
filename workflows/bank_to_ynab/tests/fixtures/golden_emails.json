@@ -1,0 +1,157 @@
+[
+  {
+    "name": "standard_purchase_restaurant",
+    "description": "Standard Bancolombia purchase at a restaurant",
+    "input": "Bancolombia le informa compra por $50.000 en RESTAURANTE EL CIELO SAS con tarjeta terminada en 52e0. 18/02/2026 14:30. Si no la reconoce llame al 018000931987.",
+    "expected": {
+      "payee_contains": "Restaurante",
+      "amount": -50000,
+      "amount_is_negative": true,
+      "card_suffix": "52e0",
+      "date_format": "YYYY-MM-DD",
+      "memo_contains": "52e0"
+    }
+  },
+  {
+    "name": "supermarket_purchase",
+    "description": "Groceries purchase at a supermarket chain",
+    "input": "Bancolombia le informa compra por $120.500 en EXITO ENVIGADO con tarjeta terminada en 1234. 18/02/2026 10:15. Si no la reconoce llame al 018000931987.",
+    "expected": {
+      "payee_contains": "xito",
+      "amount": -120500,
+      "amount_is_negative": true,
+      "card_suffix": "1234",
+      "date_format": "YYYY-MM-DD"
+    }
+  },
+  {
+    "name": "large_purchase",
+    "description": "High-value purchase to test amount parsing with millions",
+    "input": "Bancolombia le informa compra por $2.500.000 en ALKOSTO S.A. con tarjeta terminada en 9876. 17/02/2026 16:45. Si no la reconoce llame al 018000931987.",
+    "expected": {
+      "payee_contains": "Alkosto",
+      "amount": -2500000,
+      "amount_is_negative": true,
+      "card_suffix": "9876",
+      "date_format": "YYYY-MM-DD"
+    }
+  },
+  {
+    "name": "deposit_transfer_received",
+    "description": "Incoming transfer (positive amount)",
+    "input": "Bancolombia le informa transferencia recibida por $3.000.000 en cuenta terminada en 4567. 16/02/2026 09:00. Origen: JUAN PEREZ.",
+    "expected": {
+      "amount": 3000000,
+      "amount_is_negative": false,
+      "card_suffix": "4567",
+      "date_format": "YYYY-MM-DD"
+    }
+  },
+  {
+    "name": "gas_station_purchase",
+    "description": "Fuel purchase at a gas station",
+    "input": "Bancolombia le informa compra por $80.000 en TERPEL AUTOPISTA NORTE con tarjeta terminada en 52e0. 15/02/2026 08:30. Si no la reconoce llame al 018000931987.",
+    "expected": {
+      "payee_contains": "Terpel",
+      "amount": -80000,
+      "amount_is_negative": true,
+      "card_suffix": "52e0",
+      "date_format": "YYYY-MM-DD"
+    }
+  },
+  {
+    "name": "online_subscription",
+    "description": "Online subscription payment (Netflix)",
+    "input": "Bancolombia le informa pago por $39.900 en NETFLIX.COM con tarjeta terminada en ab01. 14/02/2026 03:00. Si no la reconoce llame al 018000931987.",
+    "expected": {
+      "payee_contains": "Netflix",
+      "amount": -39900,
+      "amount_is_negative": true,
+      "card_suffix": "ab01",
+      "date_format": "YYYY-MM-DD"
+    }
+  },
+  {
+    "name": "ride_sharing_uber",
+    "description": "Ride-sharing payment (Uber)",
+    "input": "Bancolombia le informa compra por $15.300 en UBER *TRIP con tarjeta terminada en 52e0. 18/02/2026 22:10. Si no la reconoce llame al 018000931987.",
+    "expected": {
+      "payee_contains": "Uber",
+      "amount": -15300,
+      "amount_is_negative": true,
+      "card_suffix": "52e0",
+      "date_format": "YYYY-MM-DD"
+    }
+  },
+  {
+    "name": "pharmacy_purchase",
+    "description": "Pharmacy purchase at a drugstore chain",
+    "input": "Bancolombia le informa compra por $25.000 en DROGUERIA CRUZ VERDE con tarjeta terminada en 1234. 13/02/2026 11:45. Si no la reconoce llame al 018000931987.",
+    "expected": {
+      "payee_contains": "Cruz Verde",
+      "amount": -25000,
+      "amount_is_negative": true,
+      "card_suffix": "1234",
+      "date_format": "YYYY-MM-DD"
+    }
+  },
+  {
+    "name": "html_email_bancolombia",
+    "description": "HTML-formatted Bancolombia email with tables and styles",
+    "input": "<html><head><style>body{font-family:Arial}</style></head><body><div style=\"background:#fff\"><table><tr><td><b>Bancolombia le informa</b></td></tr><tr><td>Compra</td><td>$75.000</td></tr><tr><td>Comercio</td><td>RESTAURANTE LA GLORIA</td></tr><tr><td>Tarjeta</td><td>terminada en 52e0</td></tr><tr><td>Fecha</td><td>18/02/2026 13:00</td></tr></table></div></body></html>",
+    "expected": {
+      "payee_contains": "Gloria",
+      "amount": -75000,
+      "amount_is_negative": true,
+      "card_suffix": "52e0",
+      "date_format": "YYYY-MM-DD"
+    }
+  },
+  {
+    "name": "small_amount_purchase",
+    "description": "Very small purchase to ensure low amounts are parsed correctly",
+    "input": "Bancolombia le informa compra por $2.500 en TIENDA DE BARRIO con tarjeta terminada en 1234. 12/02/2026 18:20. Si no la reconoce llame al 018000931987.",
+    "expected": {
+      "payee_contains": "Tienda",
+      "amount": -2500,
+      "amount_is_negative": true,
+      "card_suffix": "1234",
+      "date_format": "YYYY-MM-DD"
+    }
+  },
+  {
+    "name": "payment_credit_card",
+    "description": "Credit card payment (pago)",
+    "input": "Bancolombia le informa pago por $500.000 a TARJETA DE CREDITO VISA con tarjeta terminada en 9876. 11/02/2026 10:00.",
+    "expected": {
+      "amount": -500000,
+      "amount_is_negative": true,
+      "card_suffix": "9876",
+      "date_format": "YYYY-MM-DD"
+    }
+  },
+  {
+    "name": "davivienda_purchase",
+    "description": "Purchase notification from Davivienda (different bank format)",
+    "input": "Davivienda: Se realizó una compra con su tarjeta ****5678 por COP 150.000 en FALABELLA MEDELLIN el 10/02/2026. Si no la reconoce comuníquese con nosotros.",
+    "expected": {
+      "payee_contains": "Falabella",
+      "amount": -150000,
+      "amount_is_negative": true,
+      "card_suffix": "5678",
+      "date_format": "YYYY-MM-DD"
+    }
+  },
+  {
+    "name": "new_format_bancolombia_cop",
+    "description": "New Bancolombia format specifically using 'Compraste COPXX,00' and 'T.Cred *XXXX'",
+    "input": "Bancolombia: Compraste COP11.852,00 en UBER RIDES con tu T.Cred *7644, el 20/02/2026 a las 08:16. Si tienes dudas, encuentranos aqui: 6045109095 o 018000931987. Estamos cerca.",
+    "expected": {
+      "payee_contains": "Uber",
+      "amount": -11852,
+      "amount_is_negative": true,
+      "card_suffix": "7644",
+      "date_format": "YYYY-MM-DD"
+    }
+  }
+]

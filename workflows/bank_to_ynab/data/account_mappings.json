@@ -1,0 +1,20 @@
+{
+  "budgets": {
+    "personal": {
+      "budgetID": "f78f4313-89d6-4596-bcae-6b618648ff2d",
+      "accountMap": {
+        "6077": "cd88b3b2-f275-4816-9b05-c4a8631acaec",
+        "6125": "716e2c53-d4a5-4e76-8ac4-4802afabfbb3",
+        "8158": "a862c61d-0a84-4ad9-8aae-34d5d80cf7a9",
+        "52e0": "cd88b3b2-f275-4816-9b05-c4a8631acaec"
+      }
+    },
+    "joint": {
+      "budgetID": "03ffa75f-ae36-458d-8d2a-5ac89d865776",
+      "accountMap": {
+        "2182": "83b62e0b-5d43-4563-8d31-c7eb01757f7c",
+        "7644": "83f25ac1-1f46-4252-a731-c8afbe2b76bf"
+      }
+    }
+  }
+}

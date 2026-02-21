@@ -1,0 +1,31 @@
+name: researcher
+display_name: "Web Researcher"
+version: "1.0.0"
+description: "Resolves merchant/payee entities by searching the web to enrich transactions."
+type: llm
+model: gemini-3-flash-preview
+stage: 2
+
+input:
+  schema_ref: "ParsedEmail + MatchedAccount"
+  fields: [payee]
+
+output:
+  schema_ref: "EnrichedPayee"
+  fields: [clean_name, establishment_type, website, location]
+
+tools:
+  - name: search_web
+    description: "Searches the web for merchant details."
+
+guardrails:
+  before_model: [before_model_logger]
+  after_model: [after_model_logger]
+  before_tool: [before_tool_logger]
+  after_tool: [after_tool_logger]
+
+state_keys:
+  reads: "parsed_email"
+  writes: enriched_payee
+
+tags: [research, entity-resolution, tool-use]

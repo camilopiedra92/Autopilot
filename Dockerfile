@@ -1,0 +1,76 @@
+# syntax=docker/dockerfile:1
+# ── Build stage ───────────────────────────────────────────────────────
+# Pin exact Python version for reproducible builds
+FROM python:3.13.2-slim AS builder
+
+WORKDIR /app
+
+# Ensure apt doesn't throw warnings about lack of UI
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system deps for HTTP/2 (h2 + hpack) and curl for health checks
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy dependency definition and source code
+COPY pyproject.toml ./
+COPY autopilot/ ./autopilot/
+
+# Install Python dependencies (no-cache-dir for smaller image & Cloud Build compatibility)
+# Since we use Kaniko, the layer caching is handled externally, so we can copy source first.
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir .
+
+# ── Runtime stage ────────────────────────────────────────────────────
+FROM python:3.13.2-slim AS runtime
+
+WORKDIR /app
+
+# Ensure apt doesn't throw warnings about lack of UI
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install curl for health checks in runtime
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed packages from builder
+COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy application code (.dockerignore excludes sensitive files)
+COPY . .
+
+# Security: run as non-root
+RUN useradd -m -r appuser && chown -R appuser:appuser /app
+USER appuser
+
+# ── Environment ──────────────────────────────────────────────────────
+ENV PORT=8080
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Cloud Run injects these automatically:
+#   GOOGLE_CLOUD_PROJECT — GCP project ID
+#   K_SERVICE           — Cloud Run service name
+#   K_REVISION          — Cloud Run revision name
+#   K_CONFIGURATION     — Cloud Run configuration name
+# Secrets are injected via Secret Manager → env vars (see cloudbuild.yaml)
+
+EXPOSE ${PORT}
+
+# ── Health check ─────────────────────────────────────────────────────
+# Uses curl instead of spawning a Python interpreter (10x faster)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# ── Cloud Run startup probe (annotation for documentation) ──────────
+# Cloud Run uses TCP startup probe by default on the container port.
+# For custom startup probes, configure via gcloud or cloudbuild.yaml:
+#   --startup-cpu-boost
+#   --cpu-throttling (disabled for faster cold starts)
+
+# ── Start ────────────────────────────────────────────────────────────
+# Cloud Run sets PORT env var; uvicorn listens on 0.0.0.0:$PORT
+# --workers 2: Cloud Run instances typically have 1-2 vCPUs
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "2"]

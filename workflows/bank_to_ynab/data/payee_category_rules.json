@@ -1,0 +1,27 @@
+[
+  {
+    "payee_keywords": ["netflix", "spotify", "hbo", "disney+", "disney plus", "apple tv", "youtube premium", "amazon prime", "paramount", "crunchyroll"],
+    "expected_categories": ["suscripci", "subscripti", "streaming", "entretenimiento", "entertainment", "digital"],
+    "bad_categories": ["mercado", "groceries", "comida", "restaurante", "dining", "transporte", "transportation", "gasolina", "gas station", "salud", "health"]
+  },
+  {
+    "payee_keywords": ["restaurante", "restaurant", "café", "cafe", "pizza", "sushi", "burger", "hamburgues", "pollo", "chicken", "comida rápida", "fast food", "mcdonald", "subway", "domino", "rappi restaurante", "starbucks", "juan valdez", "dunkin"],
+    "expected_categories": ["restaurante", "dining", "comida", "food", "alimentación"],
+    "bad_categories": ["suscripci", "subscripti", "transporte", "transportation", "gasolina", "salud", "health", "ropa", "clothing"]
+  },
+  {
+    "payee_keywords": ["éxito", "exito", "carulla", "jumbo", "d1", "ara ", "supermercado", "supermarket", "grocery", "mercado", "olímpica", "olimpica", "surtimax", "alkosto", "makro", "costco", "walmart"],
+    "expected_categories": ["mercado", "groceries", "supermercado", "supermarket", "hogar", "home"],
+    "bad_categories": ["suscripci", "subscripti", "dining", "restaurante", "gasolina", "entertainment", "entretenimiento"]
+  },
+  {
+    "payee_keywords": ["gasolina", "gas station", "terpel", "biomax", "primax", "texaco", "mobil", "shell", "exxon", "peaje", "toll", "uber", "didi", "cabify", "beat", "indriver"],
+    "expected_categories": ["transporte", "transportation", "gasolina", "gas", "movilidad", "mobility", "auto", "car"],
+    "bad_categories": ["mercado", "groceries", "restaurante", "dining", "suscripci", "entertainment", "entretenimiento"]
+  },
+  {
+    "payee_keywords": ["droguería", "drogueria", "farmacia", "pharmacy", "cruz verde", "farmatodo", "locatel", "eps", "hospital", "clínica", "clinica", "médico", "medico", "doctor", "odontolog", "dentist"],
+    "expected_categories": ["salud", "health", "médico", "medical", "farmacia", "pharmacy", "bienestar"],
+    "bad_categories": ["mercado", "groceries", "restaurante", "dining", "gasolina", "entertainment", "entretenimiento"]
+  }
+]

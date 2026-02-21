@@ -1,0 +1,50 @@
+# Pipeline definition — declarative execution via DSL
+# Loaded automatically by BaseWorkflow.execute() if present.
+#
+# This replaces the previous dsl_example.yaml with a standardized
+# convention: every workflow can have a pipeline.yaml.
+
+name: template_workflow_pipeline
+strategy: sequential
+
+steps:
+  # Step 1: A simple function step
+  - name: parse_input
+    type: function
+    ref: workflows._template.steps.parse_input
+    description: "Parses raw input text into structured data."
+
+  # Step 2: A loop step that retries until valid
+  - name: validate_with_retry
+    type: loop
+    max_iterations: 3
+    condition_expr: "state.get('valid', False)"
+    description: "Retries validation up to 3 times."
+    body:
+      name: validator
+      type: function
+      ref: workflows._template.steps.validate_data
+
+  # Step 3: Parallel fetch from multiple APIs
+  - name: enrich
+    type: parallel
+    description: "Fetches enrichment data from two sources concurrently."
+    children:
+      - name: fetch_source_a
+        type: function
+        ref: workflows._template.steps.fetch_source_a
+      - name: fetch_source_b
+        type: function
+        ref: workflows._template.steps.fetch_source_b
+
+  # Step 4: Final merge
+  - name: merge_results
+    type: function
+    ref: workflows._template.steps.merge_results
+    description: "Combines all data into the final output."
+
+  # Example Step 5: Using an Agent
+  # - name: agent_step
+  #   type: agent
+  #   ref: workflows._template.agents.example_agent.create_example_agent
+  #   description: "Invokes an LLM agent defined via create_platform_agent."
