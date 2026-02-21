@@ -1,10 +1,10 @@
 ---
-description: How to safely deploy the Antigravity backend to Google Cloud Run (Tier-1 Edge Architecture)
+description: How to safely deploy the Autopilot backend to Google Cloud Run (Tier-1 Edge Architecture)
 ---
 
 # Deploy to Cloud Run: Edge Architecture Standard
 
-This workflow defines the Tier-1 standard for deploying the Antigravity backend to Google Cloud Run. It enforces edge-native principles: scale-to-zero, stateless compute, strict infrastructure-as-code, and deterministic secret injection.
+This workflow defines the Tier-1 standard for deploying the Autopilot backend to Google Cloud Run. It enforces edge-native principles: scale-to-zero, stateless compute, strict infrastructure-as-code, and deterministic secret injection.
 
 > [!CAUTION]
 > **NEVER** deploy via the Google Cloud Console UI. The UI strips volume mounts (like the Gmail OAuth tokens) unless explicitly re-added manually, causing silent failures in production. All deployments must be declarative and code-driven.

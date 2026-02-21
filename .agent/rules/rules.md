@@ -1,7 +1,7 @@
-# Antigravity Rules
+# Autopilot Rules
 
 > [!IMPORTANT]
-> These rules must be followed by **Antigravity** and all agentic sessions.
+> These rules must be followed by **Autopilot** and all agentic sessions.
 
 ## 1. Architecture Compliance
 

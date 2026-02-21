@@ -1,4 +1,4 @@
-# Antigravity Architecture Standards — "The Edge"
+# Autopilot Architecture Standards — "The Edge"
 
 > [!IMPORTANT]
 > This document is the **SINGLE SOURCE OF TRUTH** for all architectural decisions in this codebase.
