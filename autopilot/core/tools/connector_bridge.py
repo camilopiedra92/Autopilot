@@ -102,10 +102,6 @@ def expose_connector_tools(
             doc.strip().split("\n")[0] if doc else f"{connector_name} {attr_name}"
         )
 
-        # Detect if the method accepts ToolContext
-        sig = inspect.signature(member)
-        _has_tool_context = _TOOL_CONTEXT_PARAM in sig.parameters
-
         try:
             # Create a closure that captures the bound method
             bound_method = member

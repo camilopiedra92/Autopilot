@@ -40,12 +40,13 @@ Here is the matched YNAB account:
 
 Your job is to assign the most appropriate YNAB category.
 
-YOUR FIRST ACTION MUST BE to call the 'ynab.get_categories_string' tool using the budget_id from the matched account above. Do NOT respond with text first.
+YOUR FIRST ACTION MUST BE to call the 'ynab.get_categories_string' tool
+using the budget_id from the matched account above. Do NOT respond with text first.
 
 After getting the tool results:
 1. Analyze the payee/merchant name to determine the best category
 2. Use common sense for categorization:
-   - Restaurants, cafés → "Dining Out" / "Restaurantes"  
+   - Restaurants, cafés → "Dining Out" / "Restaurantes"
    - Supermarkets, grocery stores → "Groceries" / "Mercado"
    - Gas stations → "Transportation" / "Gasolina"
    - Online subscriptions (Netflix, Spotify) → "Subscriptions" / "Suscripciones"

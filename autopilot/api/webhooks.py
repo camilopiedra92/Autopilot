@@ -118,6 +118,7 @@ async def gmail_push_webhook(request: Request):
             "subject": email.get("subject", ""),
             "body": email.get("body", ""),
             "label_ids": email.get("labelIds", []),
+            "labelNames": email.get("labelNames", []),
             "source": "pubsub",
             # Preserve full email for workflows that need it
             "email": email,

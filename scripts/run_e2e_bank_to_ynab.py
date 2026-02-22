@@ -126,14 +126,14 @@ async def run_e2e(email_text: str, auto_create: bool = True, via_bus: bool = Fal
             "sender": "alertasynotificaciones@bancolombia.com.co",
             "subject": "Compra realizada",
             "body": email_text,
-            "label_ids": ["INBOX"],
+            "label_ids": ["INBOX", "Bancolombia"],
             "source": "e2e_test",
             "email": {
                 "id": "e2e-test-001",
                 "from": "alertasynotificaciones@bancolombia.com.co",
                 "subject": "Compra realizada",
                 "body": email_text,
-                "labelIds": ["INBOX"],
+                "labelIds": ["INBOX", "Bancolombia"],
             },
         }
 

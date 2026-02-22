@@ -403,6 +403,13 @@ def _to_agent(obj: Any, name: str) -> BaseAgent:
         if not has_required_args:
             try:
                 result = obj()
+
+                # If calling an async function without await, we get a coroutine.
+                # Close it to avoid "coroutine was never awaited" warnings.
+                if inspect.iscoroutine(result):
+                    result.close()
+                    raise TypeError("async function, not a factory")
+
                 from autopilot.core.pipeline import _wrap_step, _is_adk_agent
 
                 # Verify the result is actually an agent before wrapping

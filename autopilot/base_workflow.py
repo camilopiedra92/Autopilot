@@ -230,8 +230,13 @@ class BaseWorkflow:
         ``WorkflowRouter.route_gmail_push()``, but as an instance method
         so workflows can self-match when reacting to ``email.received`` events.
 
+        Label matching checks both ``labelIds`` (raw Gmail IDs like
+        ``Label_123``) and ``labelNames`` (resolved names like
+        ``Bancolombia``), so manifests can specify human-readable names.
+
         Args:
-            email_data: Dict containing 'sender'/'from' and 'label_ids'/'labelIds'.
+            email_data: Dict containing 'sender'/'from', 'label_ids'/'labelIds',
+                and optionally 'labelNames'.
 
         Returns:
             True if the email matches at least one GMAIL_PUSH trigger.
@@ -240,9 +245,12 @@ class BaseWorkflow:
             return False
 
         sender = (email_data.get("sender", "") or email_data.get("from", "")).lower()
-        email_labels = set(
+        # Collect all label identifiers: IDs + resolved names
+        email_label_ids = set(
             email_data.get("label_ids", []) or email_data.get("labelIds", [])
         )
+        email_label_names = set(email_data.get("labelNames", []))
+        all_email_labels = email_label_ids | email_label_names
 
         for trigger in self.manifest.triggers:
             if trigger.type != TriggerType.GMAIL_PUSH:
@@ -252,9 +260,9 @@ class BaseWorkflow:
             if trigger.filter and trigger.filter.lower() not in sender:
                 continue
 
-            # Match label IDs
+            # Match label IDs (checks against both raw IDs and resolved names)
             if trigger.label_ids and not set(trigger.label_ids).intersection(
-                email_labels
+                all_email_labels
             ):
                 continue
 

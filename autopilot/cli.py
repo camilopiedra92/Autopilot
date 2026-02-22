@@ -154,7 +154,7 @@ def process_input(input_data: InputData) -> dict:
 # NOTE: ONLY use @tool for workflow-specific custom logic.
 # NEVER wrap Platform Connectors (like YNAB, Gmail) with @tool;
 # the platform lazily auto-resolves those when agents reference them.
-# 
+#
 # @tool(tags=["{name}"])
 # async def my_tool(param: str) -> dict:
 #     """Description of what this tool does."""
@@ -207,7 +207,10 @@ def _trigger_yaml(trigger: str) -> str:
     triggers = {
         "manual": '  - type: manual\n    description: "Manual trigger"',
         "webhook": '  - type: webhook\n    path: /process\n    description: "HTTP webhook trigger"',
-        "gmail_push": '  - type: gmail_push\n    filter: "sender@example.com"\n    description: "Gmail push notification"',
+        "gmail_push": (
+            '  - type: gmail_push\n    filter: "sender@example.com"'
+            '\n    description: "Gmail push notification"'
+        ),
         "scheduled": '  - type: scheduled\n    cron: "0 */6 * * *"\n    description: "Runs every 6 hours"',
     }
     return triggers.get(trigger, triggers["manual"])

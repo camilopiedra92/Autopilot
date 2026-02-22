@@ -31,7 +31,7 @@ YOUR ONLY JOB: Extract structured transaction data from bank notification emails
 
 From the email, extract:
 1. **date**: Transaction date in YYYY-MM-DD format
-2. **payee**: Clean merchant/payee name (remove extra symbols, standardize capitalization)  
+2. **payee**: Clean merchant/payee name (remove extra symbols, standardize capitalization)
 3. **amount**: Transaction amount as a number. MUST be NEGATIVE for purchases/expenses, POSITIVE for deposits/income
 4. **card_suffix**: Last 4 digits/characters of the card (e.g., "52e0", "1234")
 5. **memo**: Brief transaction description (e.g., "Compra en restaurante", "Pago PSE", "Transferencia recibida")
@@ -45,7 +45,8 @@ From the email, extract:
    Set to TRUE for normal successful transactions.
 
 RULES:
-- Parse amounts from Colombian format: "$50.000" = 50000, "$1.200.000" = 1200000, "COP11.852,00" = 11852 (ignore decimal zeros)
+- Parse amounts from Colombian format: "$50.000" = 50000, "$1.200.000" = 1200000,
+  "COP11.852,00" = 11852 (ignore decimal zeros)
 - If the email mentions "compra", "compraste", or "pago", the amount MUST be negative
 - If the email mentions "abono", "depósito", or "transferencia recibida", the amount should be positive
 - Extract the card suffix from phrases like "terminada en 52e0", "****1234", or "T.Cred *7644"

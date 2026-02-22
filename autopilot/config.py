@@ -21,6 +21,7 @@ class PlatformSettings(BaseSettings):
         env_file=(".env", ".env.local"),
         env_file_encoding="utf-8",
         extra="ignore",
+        protected_namespaces=("settings_",),
     )
 
     # ── Platform ─────────────────────────────────────────────────────

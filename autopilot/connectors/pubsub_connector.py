@@ -34,18 +34,18 @@ class _PubSubConfig:
     """Platform-level PubSub configuration, read from environment."""
 
     gcp_pubsub_topic: str = ""
-    gmail_sender_filter: str = ""
     gmail_push_label_names: list[str] = field(default_factory=list)
 
     @classmethod
     def from_env(cls) -> "_PubSubConfig":
         label_raw = os.environ.get("GMAIL_PUSH_LABEL_NAMES", "")
         labels = (
-            [l.strip() for l in label_raw.split(",") if l.strip()] if label_raw else []
+            [lbl.strip() for lbl in label_raw.split(",") if lbl.strip()]
+            if label_raw
+            else []
         )
         return cls(
             gcp_pubsub_topic=os.environ.get("GCP_PUBSUB_TOPIC", ""),
-            gmail_sender_filter=os.environ.get("GMAIL_SENDER_FILTER", ""),
             gmail_push_label_names=labels,
         )
 
@@ -89,6 +89,7 @@ class PubSubConnector(BaseConnector):
         self._renewal_task: asyncio.Task | None = None
         self._shutdown_event = asyncio.Event()
         self._resolved_label_ids: list[str] = []
+        self._label_id_to_name: dict[str, str] = {}  # Reverse map for email enrichment
 
     @property
     def history_id(self) -> str | None:
@@ -199,6 +200,23 @@ class PubSubConnector(BaseConnector):
                 names=list(required_label_names),
                 ids=self._resolved_label_ids,
             )
+
+        # Build full label ID → Name reverse map for email enrichment.
+        # This lets _fetch_message_detail include human-readable label names
+        # so workflows can match on names (e.g. "Bancolombia") rather than IDs.
+        try:
+            all_labels = await asyncio.to_thread(
+                lambda: self._gmail.service.users().labels().list(userId="me").execute()
+            )
+            self._label_id_to_name = {
+                label["id"]: label["name"] for label in all_labels.get("labels", [])
+            }
+            logger.info(
+                "pubsub_label_map_built",
+                total_labels=len(self._label_id_to_name),
+            )
+        except Exception as e:
+            logger.warning("pubsub_label_map_failed", error=str(e))
 
         logger.info(
             "pubsub_starting", topic=topic, label_filter=self._resolved_label_ids
@@ -378,6 +396,12 @@ class PubSubConnector(BaseConnector):
 
         Decodes the notification, fetches new messages via history.list(),
         and returns them in standard format.
+
+        Cold-start race fix: On cold start, ``_register_watch()`` sets
+        ``_history_id`` to the CURRENT Gmail historyId, which may be AHEAD
+        of the email that triggered this notification.  We compare the
+        notification's historyId with ours and use the lower value so we
+        never skip the triggering email.
         """
         try:
             encoded_data = pubsub_message.get("message", {}).get("data", "")
@@ -402,8 +426,27 @@ class PubSubConnector(BaseConnector):
             logger.warning("pubsub_no_history_id")
             return []
 
+        # ── Cold-start race condition fix ─────────────────────────────
+        # On cold start, _register_watch() obtains the CURRENT historyId
+        # which can be AHEAD of the email that triggered this notification.
+        # Use the MINIMUM of both to ensure we look back far enough.
+        effective_history_id = self._history_id
+        if (
+            new_history_id
+            and new_history_id.isdigit()
+            and self._history_id.isdigit()
+            and int(new_history_id) < int(self._history_id)
+        ):
+            logger.warning(
+                "pubsub_cold_start_race_detected",
+                notification_history_id=new_history_id,
+                watch_history_id=self._history_id,
+                action="using notification historyId as lower bound",
+            )
+            effective_history_id = new_history_id
+
         try:
-            messages = await self._get_new_messages(self._history_id)
+            messages = await self._get_new_messages(effective_history_id)
             if new_history_id:
                 self._history_id = new_history_id
 
@@ -420,23 +463,37 @@ class PubSubConnector(BaseConnector):
             return []
 
     async def _get_new_messages(self, start_history_id: str) -> list[dict]:
-        """Fetch new messages since the given history ID."""
-        sender_filter = self._settings.gmail_sender_filter.lower()
+        """Fetch ALL new messages since the given history ID.
 
-        history_records = await asyncio.to_thread(
-            self._fetch_history_records, start_history_id
-        )
+        The connector is a platform-level pipe — it does NOT filter by
+        sender, labels, or read status.  Each workflow's
+        ``_matches_gmail_trigger()`` handles its own filtering.
+        """
+        try:
+            history_records = await asyncio.to_thread(
+                self._fetch_history_records, start_history_id
+            )
+        except Exception as e:
+            error_str = str(e)
+            if "404" in error_str or "notFound" in error_str:
+                logger.warning(
+                    "pubsub_history_id_expired",
+                    history_id=start_history_id,
+                    fallback="direct_message_search",
+                )
+                return await self._fallback_fetch_recent()
+            raise
 
         if not history_records:
             return []
 
+        # Collect ALL messagesAdded — no label or read-status filtering
         message_ids: set[str] = set()
         for record in history_records:
             for added in record.get("messagesAdded", []):
                 msg = added.get("message", {})
                 msg_id = msg.get("id")
-                label_ids = msg.get("labelIds", [])
-                if msg_id and "UNREAD" in label_ids:
+                if msg_id:
                     message_ids.add(msg_id)
 
         if not message_ids:
@@ -448,7 +505,7 @@ class PubSubConnector(BaseConnector):
         for msg_id in message_ids:
             try:
                 email = await asyncio.to_thread(self._fetch_message_detail, msg_id)
-                if email and email.get("from", "").lower().find(sender_filter) >= 0:
+                if email:
                     emails.append(email)
             except Exception as e:
                 logger.error(
@@ -483,7 +540,11 @@ class PubSubConnector(BaseConnector):
         return all_records
 
     def _fetch_message_detail(self, message_id: str) -> dict | None:
-        """Fetch full message details and extract body."""
+        """Fetch full message details and extract body + labelIds.
+
+        Includes ``labelIds`` so that downstream workflows can filter by
+        Gmail labels via ``_matches_gmail_trigger()``.
+        """
         msg = (
             self._gmail.service.users()
             .messages()
@@ -511,4 +572,43 @@ class PubSubConnector(BaseConnector):
             "body": body,
             "from": from_addr,
             "snippet": msg.get("snippet", ""),
+            "labelIds": msg.get("labelIds", []),
+            "labelNames": [
+                self._label_id_to_name.get(lid, lid) for lid in msg.get("labelIds", [])
+            ],
         }
+
+    async def _fallback_fetch_recent(self) -> list[dict]:
+        """Fallback: fetch the latest unread messages when history.list() fails.
+
+        Used when the historyId is too old (expired) and the Gmail API
+        returns a 404.  Fetches up to 5 recent unread messages as a
+        last-resort recovery.
+        """
+        try:
+            results = await asyncio.to_thread(
+                lambda: (
+                    self._gmail.service.users()
+                    .messages()
+                    .list(userId="me", q="is:unread newer_than:1h", maxResults=5)
+                    .execute()
+                )
+            )
+            message_ids = [m["id"] for m in results.get("messages", [])]
+        except Exception as e:
+            logger.error("pubsub_fallback_search_failed", error=str(e))
+            return []
+
+        emails = []
+        for msg_id in message_ids:
+            try:
+                email = await asyncio.to_thread(self._fetch_message_detail, msg_id)
+                if email:
+                    emails.append(email)
+            except Exception as e:
+                logger.error(
+                    "pubsub_fallback_fetch_failed", message_id=msg_id, error=str(e)
+                )
+
+        logger.info("pubsub_fallback_fetched", count=len(emails))
+        return emails

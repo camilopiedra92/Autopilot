@@ -242,7 +242,10 @@ class AgentCard(BaseModel):
 
     state_keys: dict[str, str] = Field(
         default_factory=dict,
-        description="Session state keys this agent reads/writes (e.g., {'reads': 'parsed_email', 'writes': 'matched_account'})",
+        description=(
+            "Session state keys this agent reads/writes "
+            "(e.g., {'reads': 'parsed_email', 'writes': 'matched_account'})"
+        ),
     )
 
     tags: list[str] = Field(default_factory=list)
@@ -264,4 +267,5 @@ class EmailReceivedEvent(BaseModel):
     subject: str = ""
     body: str = ""
     label_ids: list[str] = Field(default_factory=list)
+    label_names: list[str] = Field(default_factory=list, alias="labelNames")
     source: str = "pubsub"  # pubsub | manual | test

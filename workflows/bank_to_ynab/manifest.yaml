@@ -7,7 +7,7 @@ color: "#4285F4"
 
 triggers:
   - type: gmail_push
-    filter: "alertasynotificaciones"
+    label_ids: ["Bancolombia"]
     description: "Bancolombia email notifications"
   - type: webhook
     path: /process-email
@@ -24,11 +24,6 @@ settings:
     type: string
     required: false
     description: "Default YNAB Budget ID"
-  - key: gmail_sender_filter
-    type: string
-    required: false
-    default: "alertasynotificaciones"
-    description: "Gmail sender to filter for bank emails"
   - key: auto_create
     type: boolean
     required: false

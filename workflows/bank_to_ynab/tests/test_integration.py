@@ -309,7 +309,10 @@ class TestEmailParserIntegration:
     @pytest.mark.asyncio
     async def test_parser_consistency(self):
         """Running the same email 3x should produce consistent results."""
-        email = "Bancolombia le informa compra por $50.000 en RESTAURANTE EL CIELO con tarjeta terminada en 52e0. 18/02/2026 14:30."
+        email = (
+            "Bancolombia le informa compra por $50.000 en RESTAURANTE EL CIELO "
+            "con tarjeta terminada en 52e0. 18/02/2026 14:30."
+        )
 
         results = []
         for i in range(3):
@@ -597,7 +600,10 @@ class TestFullPipelineE2E:
         """Complete pipeline: email → parse → match → categorize → synthesize."""
         from workflows.bank_to_ynab.workflow import BankToYnabWorkflow
 
-        email = "Bancolombia le informa compra por $50.000 en RESTAURANTE EL CIELO con tarjeta terminada en 52e0. 18/02/2026 14:30."
+        email = (
+            "Bancolombia le informa compra por $50.000 en RESTAURANTE EL CIELO "
+            "con tarjeta terminada en 52e0. 18/02/2026 14:30."
+        )
         wf = BankToYnabWorkflow()
         result = await wf.execute({"body": email})
 
@@ -646,7 +652,9 @@ class TestFullPipelineE2E:
 
     @pytest.mark.asyncio
     async def test_full_pipeline_directv_purchase_with_category_balance(self):
-        """Complete E2E: Bancolombia DirectTV purchase → parse → match → research → categorize → push → category balance.
+        """Complete E2E: Bancolombia DirectTV purchase.
+
+        Tests: parse → match → research → categorize → push → category balance.
 
         Uses a real Bancolombia email for a DirecTV GO subscription.
         Validates the entire pipeline including:

@@ -157,7 +157,7 @@ class GmailConnector(BaseConnector):
                     "gmail_label_not_found",
                     label_name=name,
                     available=[
-                        l["name"] for l in all_labels if l.get("type") == "user"
+                        lbl["name"] for lbl in all_labels if lbl.get("type") == "user"
                     ],
                 )
         return resolved

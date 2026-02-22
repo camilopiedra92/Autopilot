@@ -445,5 +445,7 @@ async def auth_check_callback(
 
 
 """
-Description: Tool lifecycle callbacks for before/after hook interception around every tool call, enabling rate limiting, audit logging, auth checking, and result transformation.
+Description: Tool lifecycle callbacks for before/after hook interception
+around every tool call, enabling rate limiting, audit logging,
+auth checking, and result transformation.
 """
