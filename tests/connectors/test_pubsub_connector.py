@@ -7,9 +7,8 @@ These tests confirm that PubSubConnector:
 - Properly registers/deregisters watches on cold start
 """
 
-import asyncio
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 
 @pytest.fixture
