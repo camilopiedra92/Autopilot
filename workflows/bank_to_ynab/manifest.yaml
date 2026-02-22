@@ -7,7 +7,7 @@ color: "#4285F4"
 
 triggers:
   - type: gmail_push
-    label_ids: ["Bancolombia"]
+    label_ids: ["Bancos/Bancolombia"]
     description: "Bancolombia email notifications"
   - type: webhook
     path: /process-email
