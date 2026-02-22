@@ -62,12 +62,10 @@ class PubSubConnector(BaseConnector):
       Gmail → Pub/Sub Topic → POST /gmail/webhook → history.list() → process_email()
 
     Watch Renewal:
-      Gmail watch() expires after ~7 days. This connector auto-renews
-      every 6 days via a background asyncio task.
+      Gmail watch() expires after ~7 days. Cloud Scheduler
+      (ping-bank-to-ynab) calls POST /gmail/watch/renew daily
+      to keep it alive across scale-to-zero cycles.
     """
-
-    # Watch expires in ~7 days; renew every 6 days to be safe
-    WATCH_RENEWAL_INTERVAL_SECONDS = 6 * 24 * 60 * 60  # 6 days
 
     @property
     def name(self) -> str:
@@ -86,8 +84,6 @@ class PubSubConnector(BaseConnector):
         self._settings = None
         self._history_id: str | None = None
         self._watch_expiration: int = 0
-        self._renewal_task: asyncio.Task | None = None
-        self._shutdown_event = asyncio.Event()
         self._resolved_label_ids: list[str] = []
         self._label_id_to_name: dict[str, str] = {}  # Reverse map for email enrichment
 
@@ -121,9 +117,6 @@ class PubSubConnector(BaseConnector):
             "history_id": self._history_id,
             "expiration": str(self.watch_expiration) if self.watch_expiration else None,
             "expiration_epoch_ms": self._watch_expiration,
-            "renewal_task_alive": (
-                self._renewal_task is not None and not self._renewal_task.done()
-            ),
         }
 
     # ── Lifecycle ────────────────────────────────────────────────────
@@ -222,15 +215,8 @@ class PubSubConnector(BaseConnector):
             "pubsub_starting", topic=topic, label_filter=self._resolved_label_ids
         )
 
-        # Register initial watch
+        # Register initial watch (Cloud Scheduler handles renewals)
         await self._register_watch()
-
-        # Start renewal loop
-        self._shutdown_event.clear()
-        self._renewal_task = asyncio.create_task(
-            self._watch_renewal_loop(),
-            name="gmail_watch_renewal",
-        )
 
         logger.info(
             "pubsub_started",
@@ -242,23 +228,11 @@ class PubSubConnector(BaseConnector):
         """Stop receiving push notifications."""
         logger.info("pubsub_stopping")
 
-        if self._renewal_task and not self._renewal_task.done():
-            self._shutdown_event.set()
-            try:
-                await asyncio.wait_for(self._renewal_task, timeout=5.0)
-            except asyncio.TimeoutError:
-                self._renewal_task.cancel()
-                try:
-                    await self._renewal_task
-                except asyncio.CancelledError:
-                    pass
-
         try:
             await asyncio.to_thread(self._stop_watch)
         except Exception as e:
             logger.warning("pubsub_stop_watch_failed", error=str(e))
 
-        self._renewal_task = None
         logger.info("pubsub_stopped")
 
     async def teardown(self) -> None:
@@ -363,30 +337,6 @@ class PubSubConnector(BaseConnector):
         except Exception as e:
             logger.warning("pubsub_watch_stop_failed", error=str(e))
 
-    async def _watch_renewal_loop(self) -> None:
-        """Background task that renews the Gmail watch before expiration."""
-        while not self._shutdown_event.is_set():
-            try:
-                await asyncio.wait_for(
-                    self._shutdown_event.wait(),
-                    timeout=self.WATCH_RENEWAL_INTERVAL_SECONDS,
-                )
-                break
-            except asyncio.TimeoutError:
-                pass
-
-            if self._shutdown_event.is_set():
-                break
-
-            try:
-                logger.info("pubsub_watch_renewing")
-                await self._register_watch()
-                logger.info(
-                    "pubsub_watch_renewed",
-                    new_expiration=str(self.watch_expiration),
-                )
-            except Exception as e:
-                logger.error("pubsub_watch_renewal_failed", error=str(e))
 
     # ── Notification Handling ────────────────────────────────────────
 

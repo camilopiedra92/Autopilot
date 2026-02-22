@@ -458,22 +458,24 @@ results = await ctx2.recall("previous transactions")
 
 ### Scale-to-Zero and Long-Lived Subscriptions
 
-Cloud Run deployments use **scale-to-zero** (`min-instances=0`) for cost efficiency. This has severe implications for long-lived components like the `PubSubConnector`'s Gmail Watch renewal loop. When the instance scales to zero, in-memory background tasks are killed.
+Cloud Run deployments use **scale-to-zero** (`min-instances=0`) for cost efficiency. This creates a deadlock risk for long-lived subscriptions like Gmail `watch()`.
 
 **The Deadlock Problem:**
 
-1. Instance scales to zero, killing the in-process renewal loop.
-2. Watch expires (e.g. 7 days later).
+1. Instance scales to zero after idle period.
+2. Watch expires (~7 days).
 3. Gmail stops sending Pub/Sub notifications.
 4. No notifications → no HTTP requests → instance never wakes up → watch never renews.
 
-**The Architectural Solution (Keep-Alive Pattern & Exclusivity):**
-Scale-to-zero engines **must** rely on external, managed schedulers to keep time-sensitive subscriptions alive, and must forcefully prioritize production execution.
+**The Architectural Solution (Cloud Scheduler + Watch Stealing):**
 
-1. **Idempotent Setup**: The connector's `setup()` method must idempotently re-register the watch on _every_ cold start.
+⛔️ **NEVER** use in-process background tasks (`asyncio.create_task`, `while True` loops) for renewal in ephemeral compute. They die silently on scale-to-zero.
+✅ **ALWAYS** rely on external, managed schedulers.
+
+1. **Idempotent Setup**: The connector's `setup()` method idempotently re-registers the watch on _every_ cold start.
 2. **HTTP Renew Endpoint**: The platform exposes `POST /gmail/watch/renew`.
-3. **Cloud Scheduler**: A Google Cloud Scheduler job is configured to ping the renew endpoint periodically (e.g., every 6 days for a 7-day watch), forcing the instance to wake up and execute the renewal logic, breaking the deadlock permanently.
-4. **Auto-Recovery (Watch Stealing)**: Gmail allows only one push notification webhook per developer account. If `watch()` throws an `"Only one user push notification client allowed"` error (which usually happens when a developer tests locally and locks the topic), the production connector **intercepts** this error, calls `stop()` natively to "steal" back exclusivity, and retries the registration. This ensures zero downtime in production regardless of local testing.
+3. **Cloud Scheduler (`ping-bank-to-ynab`)**: Pings the renew endpoint daily (9:00 UTC), forcing the instance to wake and execute renewal, breaking the deadlock permanently. No in-process background tasks exist.
+4. **Auto-Recovery (Watch Stealing)**: Gmail allows only one push notification webhook per developer account. If `watch()` throws an `"Only one user push notification client allowed"` error (typically from local testing), the production connector **intercepts** it, calls `stop()` to "steal" back exclusivity, and retries. This ensures zero downtime regardless of local testing.
 
 ### Tool Ecosystem (Phase 4)
 

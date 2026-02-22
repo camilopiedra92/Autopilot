@@ -16,7 +16,7 @@ To maintain a world-class, edge-native architecture, we strictly adhere to the f
 1. **Stateless Compute**: The container is fully ephemeral and assumes it can be destroyed at any millisecond. All state belongs in external, distributed stores (Redis/Chroma) or is passed natively in the execution context (`AgentContext`).
 2. **Ephemeral File-Based Auth**: Third-party OAuth tokens (e.g., Gmail's `credentials.json` and `token.json`) **must not** be baked into the Docker image or read randomly from disk. They MUST be dynamically mounted at runtime from Google Secret Manager into memory-backed volume mounts.
 3. **Scale-to-Zero Default**: To minimize cost and enforce pure event-driven patterns, `--min-instances=0` is mandatory.
-4. **Decoupled Background Tasks**: In-process background loops (like watch renewals) die when instances scale to zero. We use external, managed schedulers (Google Cloud Scheduler) to ping keep-alive HTTP endpoints (`POST /gmail/watch/renew`) to break deadlocks.
+4. **No In-Process Background Tasks**: The codebase contains **zero** background loops or `asyncio.create_task` renewal hacks. All time-sensitive renewals are delegated to Google Cloud Scheduler (`ping-bank-to-ynab`), which pings `POST /gmail/watch/renew` daily to keep the Gmail watch alive across scale-to-zero cycles.
 5. **Auto-Recovery (Watch Stealing)**: Gmail allows only one active push notification webhook per developer account. The production connector will automatically intercept lock errors (typically caused by local testing) and forcefully steal back exclusivity to prevent downtime.
 
 ## 2. CI/CD Pipeline (Source of Truth)
