@@ -337,7 +337,6 @@ class PubSubConnector(BaseConnector):
         except Exception as e:
             logger.warning("pubsub_watch_stop_failed", error=str(e))
 
-
     # ── Notification Handling ────────────────────────────────────────
 
     async def handle_notification(self, pubsub_message: dict) -> list[dict]:

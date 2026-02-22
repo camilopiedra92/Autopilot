@@ -76,9 +76,7 @@ class TestPubSubConnectorWatchLifecycle:
                 "os.environ",
                 {"GCP_PUBSUB_TOPIC": "projects/test/topics/test"},
             ),
-            patch(
-                "autopilot.registry.get_registry"
-            ) as mock_reg,
+            patch("autopilot.registry.get_registry") as mock_reg,
         ):
             mock_reg.return_value.get_all_workflows.return_value = []
 
@@ -98,9 +96,7 @@ class TestPubSubConnectorWatchLifecycle:
                 "os.environ",
                 {"GCP_PUBSUB_TOPIC": "projects/test/topics/test"},
             ),
-            patch(
-                "autopilot.registry.get_registry"
-            ) as mock_reg,
+            patch("autopilot.registry.get_registry") as mock_reg,
         ):
             mock_reg.return_value.get_all_workflows.return_value = []
 
@@ -117,9 +113,7 @@ class TestPubSubConnectorWatchLifecycle:
                 "os.environ",
                 {"GCP_PUBSUB_TOPIC": "projects/test/topics/test"},
             ),
-            patch(
-                "autopilot.registry.get_registry"
-            ) as mock_reg,
+            patch("autopilot.registry.get_registry") as mock_reg,
         ):
             mock_reg.return_value.get_all_workflows.return_value = []
 
