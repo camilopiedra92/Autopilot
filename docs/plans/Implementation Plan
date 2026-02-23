@@ -8,7 +8,7 @@
 
 The platform has **exceptionally strong architectural foundations** — factory agents, typed BaseAgent contract, DAG/ReAct/Router orchestration, declarative DSL, tool ecosystem with lifecycle callbacks, session/memory abstraction, structured error taxonomy, and A2A bus. This is already far ahead of most agentic platforms.
 
-However, the audit found **21 specific items** across three categories:
+However, the audit found **22 specific items** across three categories:
 
 | Category                                           | Count | Impact                |
 | -------------------------------------------------- | ----- | --------------------- |
@@ -341,6 +341,23 @@ Files: `autopilot/agents/rate_limiter.py` (new), `autopilot/agents/base.py`, `au
 
 ---
 
+### N7. Firestore Vector Memory Service (Durable Semantic Recall) ✅ DONE
+
+Durable semantic memory using Firestore + Gemini embeddings. ADK-native `BaseMemoryService` implementation that embeds conversation events via `google.genai` (`gemini-embedding-001`, 256 dims), stores with Firestore `Vector` fields, and searches via `find_nearest()` (cosine similarity). Survives Cloud Run scale-to-zero.
+
+- **`autopilot/core/memory_firestore.py`** — NEW: `FirestoreVectorMemoryService(BaseMemoryService)` with batch embedding, idempotent upserts, `from_env()` classmethod
+- **`autopilot/core/memory.py`** — `create_memory_service()` factory updated: `firestore` backend added
+- **`tests/autopilot/test_memory_firestore.py`** — NEW: 18 tests (fully mocked Firestore + Gemini)
+- **Deploy config** — `MEMORY_BACKEND=firestore` in `ci.yml` and `deploy_to_cloud_run.md`
+- **Docs** — `.env.example`, `Dockerfile`, `ARCHITECTURE.md` updated with firestore backend tables + embedding config vars
+
+**Config (12-Factor):** `MEMORY_EMBEDDING_MODEL` (gemini-embedding-001), `MEMORY_EMBEDDING_DIMENSIONALITY` (256), `MEMORY_SEARCH_LIMIT` (20).
+
+> [!NOTE]
+> **COMPLETED** — Durable semantic vector memory. 494 tests passing.
+
+---
+
 ## Summary of Priorities
 
 ### Immediate (Day 1) — Zero Cost, Massive Cleanup
@@ -383,3 +400,4 @@ Files: `autopilot/agents/rate_limiter.py` (new), `autopilot/agents/base.py`, `au
 | N3  | ~~Gemini context caching~~     | ✅ DONE | —      |
 | N5  | ~~Artifact Store~~             | ✅ DONE | —      |
 | A7  | ~~Auto-version from git tags~~ | ✅ DONE | —      |
+| N7  | ~~Firestore Vector Memory~~    | ✅ DONE | —      |

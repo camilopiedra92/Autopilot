@@ -4,9 +4,10 @@ MemoryService — ADK-native re-exports + 12-Factor factory.
 Aligned with Google ADK's ``BaseMemoryService`` contract.  All custom
 abstractions (Observation, TF-IDF, ChromaDB) have been eliminated.
 
-Two backends (selected via ``MEMORY_BACKEND`` env var):
-  - ``memory``   → ADK InMemoryMemoryService (keyword matching, zero deps)
-  - ``vertexai`` → VertexAiMemoryBankService (Vertex AI Memory Bank)
+Three backends (selected via ``MEMORY_BACKEND`` env var):
+  - ``memory``    → ADK InMemoryMemoryService (keyword matching, zero deps)
+  - ``firestore`` → FirestoreVectorMemoryService (Firestore + Gemini embeddings)
+  - ``vertexai``  → VertexAiMemoryBankService (Vertex AI Memory Bank)
 
 Usage:
     from autopilot.core.memory import create_memory_service
@@ -33,10 +34,11 @@ _memory_service: BaseMemoryService | None = None
 def create_memory_service() -> BaseMemoryService:
     """Create a MemoryService based on MEMORY_BACKEND env var.
 
-    | MEMORY_BACKEND | Backend                       | Cost             |
-    |----------------|-------------------------------|------------------|
-    | ``memory``     | ADK InMemoryMemoryService     | Free             |
-    | ``vertexai``   | VertexAiMemoryBankService     | Free (Express)   |
+    | MEMORY_BACKEND | Backend                       | Cost                  |
+    |----------------|-------------------------------|-----------------------|
+    | ``memory``     | ADK InMemoryMemoryService     | Free                  |
+    | ``firestore``  | FirestoreVectorMemoryService  | ~$0.15/month          |
+    | ``vertexai``   | VertexAiMemoryBankService     | Free (Express)        |
 
     Returns:
         A configured BaseMemoryService instance.
@@ -49,6 +51,12 @@ def create_memory_service() -> BaseMemoryService:
     if backend == "memory":
         logger.info("memory_backend_selected", backend="memory")
         return InMemoryMemoryService()
+
+    if backend == "firestore":
+        from autopilot.core.memory_firestore import FirestoreVectorMemoryService
+
+        logger.info("memory_backend_selected", backend="firestore")
+        return FirestoreVectorMemoryService.from_env()
 
     if backend == "vertexai":
         from google.adk.memory import VertexAiMemoryBankService
@@ -66,7 +74,8 @@ def create_memory_service() -> BaseMemoryService:
         return VertexAiMemoryBankService(agent_engine_id=agent_engine_id)
 
     raise ValueError(
-        f"Unknown MEMORY_BACKEND: {backend!r}. Supported: 'memory', 'vertexai'."
+        f"Unknown MEMORY_BACKEND: {backend!r}. "
+        "Supported: 'memory', 'firestore', 'vertexai'."
     )
 
 

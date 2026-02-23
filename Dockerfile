@@ -70,8 +70,11 @@ ENV GRPC_VERBOSITY=ERROR
 # App-level env vars (set via gcloud/cloudbuild.yaml):
 #   EVENTBUS_BACKEND              — "memory" (default) or "pubsub" (production)
 #   SESSION_BACKEND               — "memory" (default) or "firestore" (production)
-#   MEMORY_BACKEND                — "memory" (default) or "vertexai" (production)
+#   MEMORY_BACKEND                — "memory" (default), "firestore", or "vertexai" (production)
 #   MEMORY_AGENT_ENGINE_ID        — Vertex AI Agent Engine ID (required when MEMORY_BACKEND=vertexai)
+#   MEMORY_EMBEDDING_MODEL        — Embedding model (default: gemini-embedding-001, firestore only)
+#   MEMORY_EMBEDDING_DIMENSIONALITY — Vector dimensions (default: 768, firestore only)
+#   MEMORY_SEARCH_LIMIT           — Max search results (default: 20, firestore only)
 #   ARTIFACT_BACKEND              — "memory" (default) or "gcs" (production)
 #   ARTIFACT_GCS_BUCKET           — GCS bucket name (required when ARTIFACT_BACKEND=gcs)
 #   CONTEXT_CACHE_MIN_TOKENS      — Min tokens to trigger caching (default: 2048)

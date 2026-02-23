@@ -428,8 +428,9 @@ class ADKRunner:
         Fire-and-forget: failures are logged and swallowed (same pattern as
         ``_persist_llm_artifact``).  When ``MEMORY_BACKEND=memory`` this
         stores events in-process for keyword-based recall across sessions.
-        When ``MEMORY_BACKEND=vertexai`` it persists to Vertex AI Memory Bank
-        for durable semantic search.
+        When ``MEMORY_BACKEND=firestore`` it embeds events via Gemini and
+        persists to Firestore for durable semantic vector search.
+        When ``MEMORY_BACKEND=vertexai`` it persists to Vertex AI Memory Bank.
         """
         if not self._memory_service:
             return

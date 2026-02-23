@@ -229,7 +229,7 @@ After each successful agent execution, `ADKRunner` calls `add_session_to_memory(
 **Key characteristics:**
 
 - **Fire-and-forget**: Failures are logged and swallowed (never blocks the pipeline)
-- **Backend-dependent**: `InMemoryMemoryService` → keyword-matching, process-scoped (lost on restart). `VertexAiMemoryBankService` → persistent, semantic search
+- **Backend-dependent**: `InMemoryMemoryService` → keyword-matching, process-scoped (lost on restart). `FirestoreVectorMemoryService` → durable, semantic vector search via Gemini embeddings. `VertexAiMemoryBankService` → managed, semantic search
 - **Always-on**: Transfer happens automatically after every successful execution — no opt-in needed
 
 ### Temporal Context & State Injection (ADK InstructionProvider)
@@ -623,7 +623,7 @@ Every `AgentContext` includes **session** (ADK `Session` object) and **memory** 
 - `ctx.session` **is** the ADK `Session` directly — `ctx.session.state` is a plain dict, no async wrappers.
 - Session backend is selected via `SESSION_BACKEND` env var using `create_session_service()` factory. Default `InMemorySessionService` for dev/test; `FirestoreSessionService` for production.
 - **Multi-turn conversations**: `ADKRunner.run()` accepts an optional `session_id`. When provided, it uses a **get-or-create** pattern to resume existing sessions. Callers pass `session_id` via `ctx.metadata["session_id"]` — `ADKAgent.run()` threads it through automatically.
-- Memory backend is selected via `MEMORY_BACKEND` env var using `create_memory_service()` factory. Default `InMemoryMemoryService` for dev/test; `VertexAiMemoryBankService` for production.
+- Memory backend is selected via `MEMORY_BACKEND` env var using `create_memory_service()` factory. Default `InMemoryMemoryService` for dev/test; `FirestoreVectorMemoryService` for production (durable, semantic vector search via Gemini embeddings).
 
 #### Session Backend Selection (12-Factor Config-Driven)
 
@@ -698,14 +698,30 @@ response = await ctx2.recall("previous transactions")
 
 The memory backend follows the same 12-Factor pattern as sessions and event bus:
 
-| Environment    | Backend                     | `MEMORY_BACKEND`                   | Why                                   |
-| -------------- | --------------------------- | ---------------------------------- | ------------------------------------- |
-| **Unit Tests** | `InMemoryMemoryService`     | Unset → `memory` (default)         | Zero deps, deterministic, instant     |
-| **Local Dev**  | `InMemoryMemoryService`     | Unset → `memory` (default)         | Stateless pipelines — persistence n/a |
-| **Cloud Run**  | `VertexAiMemoryBankService` | Set via `--set-env-vars` at deploy | Persistent, semantic search, managed  |
+| Environment    | Backend                        | `MEMORY_BACKEND`           | Why                                       |
+| -------------- | ------------------------------ | -------------------------- | ----------------------------------------- |
+| **Unit Tests** | `InMemoryMemoryService`        | Unset → `memory` (default) | Zero deps, deterministic, instant         |
+| **Local Dev**  | `InMemoryMemoryService`        | Unset → `memory` (default) | Stateless pipelines — persistence n/a     |
+| **Cloud Run**  | `FirestoreVectorMemoryService` | `MEMORY_BACKEND=firestore` | Durable, semantic vector search, low cost |
+| **Cloud Run**  | `VertexAiMemoryBankService`    | `MEMORY_BACKEND=vertexai`  | Managed, semantic search, higher cost     |
 
 > [!IMPORTANT]
-> `MEMORY_BACKEND` is **not** set in `.env` — it defaults to `memory` for all local/CI scenarios. Production sets it explicitly via `--set-env-vars MEMORY_BACKEND=vertexai,MEMORY_AGENT_ENGINE_ID=<id>` in the deploy command.
+> `MEMORY_BACKEND` is **not** set in `.env` — it defaults to `memory` for all local/CI scenarios. Production sets it explicitly via `--set-env-vars MEMORY_BACKEND=firestore` in the deploy command.
+
+`FirestoreVectorMemoryService` stores memories in a hierarchical Firestore document structure with vector embeddings:
+
+```
+autopilot_memory/{app_name}/users/{user_id}/memories/{event_id}
+    → { text, embedding: Vector([...]), author, timestamp, session_id }
+```
+
+Embeddings are generated via `google.genai` (`gemini-embedding-001`, 768 dimensions) and searched via Firestore's native `find_nearest()` (cosine similarity). Configuration:
+
+| Variable                          | Default                | Purpose                                |
+| --------------------------------- | ---------------------- | -------------------------------------- |
+| `MEMORY_EMBEDDING_MODEL`          | `gemini-embedding-001` | Embedding model                        |
+| `MEMORY_EMBEDDING_DIMENSIONALITY` | `768`                  | Vector dimensions (Google recommended) |
+| `MEMORY_SEARCH_LIMIT`             | `20`                   | Max results from `search_memory()`     |
 
 ```python
 from autopilot.core.memory import create_memory_service
@@ -795,32 +811,33 @@ gs://{ARTIFACT_GCS_BUCKET}/{app_name}/default/{execution_id}/
 > [!NOTE]
 > The two artifact layers are complementary: `.json` captures the **structured output** after the platform processes it (state merging, type conversion); `.llm.json` captures the **raw LLM response** before any processing. Together they provide a complete audit trail for debugging, replay, and cost analysis.
 
-| Component                   | Purpose                                                             |
-| --------------------------- | ------------------------------------------------------------------- |
-| `BaseSessionService`        | ADK ABC — re-exported from `google.adk.sessions`                    |
-| `InMemorySessionService`    | ADK dict-backed session (dev/test, default)                         |
-| `FirestoreSessionService`   | Durable Firestore backend (production, `SESSION_BACKEND=firestore`) |
-| `create_session_service`    | Factory — reads `SESSION_BACKEND` env var, returns correct backend  |
-| `Session`                   | ADK Pydantic model (`id`, `app_name`, `user_id`, `state`, `events`) |
-| `ctx.session`               | The ADK `Session` object — `ctx.session.state` is a plain dict      |
-| `ctx.session_service`       | ADK `SessionService` — full lifecycle (create/get/list/delete)      |
-| `BaseMemoryService`         | ADK ABC — re-exported from `google.adk.memory`                      |
-| `InMemoryMemoryService`     | ADK keyword-matching memory (dev/test, default)                     |
-| `VertexAiMemoryBankService` | Vertex AI Memory Bank (production, `MEMORY_BACKEND=vertexai`)       |
-| `create_memory_service`     | Factory — reads `MEMORY_BACKEND` env var, returns correct backend   |
-| `ctx.remember(text)`        | Convenience → `memory.add_events_to_memory()`                       |
-| `ctx.recall(query)`         | Convenience → `memory.search_memory()` → `SearchMemoryResponse`     |
-| `BaseArtifactService`       | ADK ABC — re-exported from `google.adk.artifacts`                   |
-| `InMemoryArtifactService`   | ADK in-memory artifact store (dev/test, default)                    |
-| `GcsArtifactService`        | GCS artifact store (production, `ARTIFACT_BACKEND=gcs`)             |
-| `create_artifact_service`   | Factory — reads `ARTIFACT_BACKEND` env var, returns correct backend |
-| `ctx.save_artifact(name,p)` | Convenience → `artifact_service.save_artifact()` → version `int`    |
-| `ctx.load_artifact(name)`   | Convenience → `artifact_service.load_artifact()` → `Part \| None`   |
-| `ctx.list_artifacts()`      | Convenience → `artifact_service.list_artifact_keys()` → `list[str]` |
-| `ctx.tools`                 | Access the global `ToolRegistry` from any agent                     |
-| `ctx.bus`                   | Access the global `EventBus` for A2A messaging                      |
-| `ctx.publish(topic)`        | Convenience → `bus.publish()` with auto-sender                      |
-| `ctx.subscribe(topic)`      | Convenience → `bus.subscribe()`                                     |
+| Component                      | Purpose                                                                |
+| ------------------------------ | ---------------------------------------------------------------------- |
+| `BaseSessionService`           | ADK ABC — re-exported from `google.adk.sessions`                       |
+| `InMemorySessionService`       | ADK dict-backed session (dev/test, default)                            |
+| `FirestoreSessionService`      | Durable Firestore backend (production, `SESSION_BACKEND=firestore`)    |
+| `create_session_service`       | Factory — reads `SESSION_BACKEND` env var, returns correct backend     |
+| `Session`                      | ADK Pydantic model (`id`, `app_name`, `user_id`, `state`, `events`)    |
+| `ctx.session`                  | The ADK `Session` object — `ctx.session.state` is a plain dict         |
+| `ctx.session_service`          | ADK `SessionService` — full lifecycle (create/get/list/delete)         |
+| `BaseMemoryService`            | ADK ABC — re-exported from `google.adk.memory`                         |
+| `InMemoryMemoryService`        | ADK keyword-matching memory (dev/test, default)                        |
+| `VertexAiMemoryBankService`    | Vertex AI Memory Bank (alternative, `MEMORY_BACKEND=vertexai`)         |
+| `FirestoreVectorMemoryService` | Firestore + Gemini embeddings (production, `MEMORY_BACKEND=firestore`) |
+| `create_memory_service`        | Factory — reads `MEMORY_BACKEND` env var, returns correct backend      |
+| `ctx.remember(text)`           | Convenience → `memory.add_events_to_memory()`                          |
+| `ctx.recall(query)`            | Convenience → `memory.search_memory()` → `SearchMemoryResponse`        |
+| `BaseArtifactService`          | ADK ABC — re-exported from `google.adk.artifacts`                      |
+| `InMemoryArtifactService`      | ADK in-memory artifact store (dev/test, default)                       |
+| `GcsArtifactService`           | GCS artifact store (production, `ARTIFACT_BACKEND=gcs`)                |
+| `create_artifact_service`      | Factory — reads `ARTIFACT_BACKEND` env var, returns correct backend    |
+| `ctx.save_artifact(name,p)`    | Convenience → `artifact_service.save_artifact()` → version `int`       |
+| `ctx.load_artifact(name)`      | Convenience → `artifact_service.load_artifact()` → `Part \| None`      |
+| `ctx.list_artifacts()`         | Convenience → `artifact_service.list_artifact_keys()` → `list[str]`    |
+| `ctx.tools`                    | Access the global `ToolRegistry` from any agent                        |
+| `ctx.bus`                      | Access the global `EventBus` for A2A messaging                         |
+| `ctx.publish(topic)`           | Convenience → `bus.publish()` with auto-sender                         |
+| `ctx.subscribe(topic)`         | Convenience → `bus.subscribe()`                                        |
 
 ### Scale-to-Zero and Long-Lived Subscriptions
 
