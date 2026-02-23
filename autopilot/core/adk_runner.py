@@ -45,6 +45,7 @@ from autopilot.agents.context_cache import (
     has_cache_context,
     create_context_cache_config,
 )
+from autopilot.core.cost import reset_cost_tracker, get_cost_tracker
 from autopilot.core.session import create_session_service
 from autopilot.core.memory import create_memory_service
 from autopilot.core.artifact import create_artifact_service
@@ -193,6 +194,9 @@ class ADKRunner:
 
         start = time.monotonic()
 
+        # Reset cost tracker for this execution
+        reset_cost_tracker()
+
         try:
             # Conditionally wrap agent in App for context caching
             if has_cache_context(pipeline):
@@ -278,6 +282,7 @@ class ADKRunner:
                             final_text = "\n".join(text_parts)
 
             elapsed_ms = round((time.monotonic() - start) * 1000, 2)
+            cost_snapshot = get_cost_tracker().snapshot()
 
             if not final_text:
                 # ReAct agents (like conversational_assistant) may complete
@@ -332,6 +337,9 @@ class ADKRunner:
                 duration_ms=elapsed_ms,
                 final_text_length=len(final_text),
                 has_parsed_json=bool(parsed_json),
+                total_tokens=cost_snapshot.total_tokens,
+                estimated_cost_usd=round(cost_snapshot.estimated_cost_usd, 6),
+                llm_calls=cost_snapshot.llm_calls,
             )
 
             # Publish pipeline_completed event to unified bus
@@ -340,6 +348,7 @@ class ADKRunner:
                 {
                     "session_id": session_id,
                     "duration_ms": elapsed_ms,
+                    "cost": cost_snapshot.to_dict(),
                 },
                 sender="adk_runner",
             )
@@ -350,6 +359,7 @@ class ADKRunner:
                 parsed_json=parsed_json,
                 state=final_state,
                 duration_ms=elapsed_ms,
+                cost=cost_snapshot.to_dict(),
             )
 
             # ── Persist LLM result as a versioned artifact ────────────
@@ -401,6 +411,7 @@ class ADKRunner:
                 "app_name": self._app_name,
                 "session_id": session_id,
                 "duration_ms": result.duration_ms,
+                "cost": result.cost,
                 "final_text": result.final_text,
                 "parsed_json": result.parsed_json,
             }

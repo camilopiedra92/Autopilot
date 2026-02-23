@@ -262,6 +262,29 @@ class AgentContext:
         """Milliseconds since context creation."""
         return round((time.monotonic() - self._started_at) * 1000, 2)
 
+    # ── Cost Tracking ────────────────────────────────────────────────
+
+    @property
+    def cost(self):
+        """Read-only snapshot of accumulated cost for this execution.
+
+        Returns a ``CostSnapshot`` with token usage and estimated USD cost.
+        Backed by the async-safe ``CostTracker`` ContextVar.
+        """
+        from autopilot.core.cost import get_cost_tracker
+
+        return get_cost_tracker().snapshot()
+
+    @property
+    def cost_tracker(self):
+        """Direct access to the mutable CostTracker for this execution.
+
+        Use for budget guardrail checks or manual cost recording.
+        """
+        from autopilot.core.cost import get_cost_tracker
+
+        return get_cost_tracker()
+
     # ── Tool Registry Access ─────────────────────────────────────────
 
     @property

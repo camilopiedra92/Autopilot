@@ -176,6 +176,10 @@ class PipelineResult(BaseModel):
     parsed_json: dict[str, Any] = Field(default_factory=dict)
     state: dict[str, Any] = Field(default_factory=dict)
     duration_ms: float = 0
+    cost: dict[str, Any] | None = Field(
+        default=None,
+        description="Cost snapshot: tokens, estimated USD, per-agent breakdown.",
+    )
 
 
 # ── Agent Cards (Declarative Agent Metadata) ─────────────────────────

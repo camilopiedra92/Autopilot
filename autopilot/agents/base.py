@@ -11,6 +11,7 @@ ADK `LlmAgent`s with standard platform configuration:
 
 from __future__ import annotations
 
+import os
 from typing import Any, Callable
 
 from google.adk.agents import LlmAgent
@@ -21,6 +22,7 @@ from autopilot.agents.callbacks import (
     after_model_logger,
     create_chained_before_callback,
     create_chained_after_callback,
+    create_budget_guardrail,
 )
 from autopilot.agents.context_cache import PLATFORM_CACHE_CONTEXT_ATTR
 from autopilot.agents.rate_limiter import get_model_rate_limit_callback
@@ -126,6 +128,7 @@ def create_platform_agent(
     output_schema: type | None = None,
     temperature: float | None = None,
     cache_context: bool = False,
+    budget_usd: float | None = None,
     **kwargs,
 ) -> LlmAgent | BaseAgent:
     """
@@ -148,6 +151,9 @@ def create_platform_agent(
         cache_context: If True, enables Gemini context caching for this agent.
             Caches system instructions + tool schemas server-side for reuse
             across invocations. Best for agents with long, static instructions.
+        budget_usd: If set, chains a budget guardrail that blocks LLM calls
+            when the accumulated execution cost exceeds this threshold.
+            Falls back to ``DEFAULT_BUDGET_USD`` env var if not set.
         **kwargs: Additional arguments passed to LlmAgent constructor.
 
     Returns:
@@ -197,6 +203,16 @@ def create_platform_agent(
     before_chain = []
     if rate_limiter_cb:
         before_chain.append(rate_limiter_cb)
+
+    # Budget guardrail (parameter or env var)
+    effective_budget = budget_usd or (
+        float(os.environ["DEFAULT_BUDGET_USD"])
+        if os.environ.get("DEFAULT_BUDGET_USD")
+        else None
+    )
+    if effective_budget is not None:
+        before_chain.append(create_budget_guardrail(effective_budget))
+
     if user_before_model:
         before_chain.append(user_before_model)
     before_chain.append(before_model_logger)

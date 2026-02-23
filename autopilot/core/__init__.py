@@ -72,6 +72,7 @@ from autopilot.core.dsl_schema import (
     DSLStrategy,
 )
 from autopilot.core.dsl_loader import load_workflow, load_workflow_from_dict
+from autopilot.core.cost import CostSnapshot, CostTracker, get_cost_tracker
 
 __all__ = [
     "AgentContext",
@@ -124,4 +125,8 @@ __all__ = [
     "DSLStrategy",
     "load_workflow",
     "load_workflow_from_dict",
+    # Cost Tracking
+    "CostSnapshot",
+    "CostTracker",
+    "get_cost_tracker",
 ]

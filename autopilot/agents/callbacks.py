@@ -1,10 +1,10 @@
-"""
-Platform Callbacks — Observability and composition for ADK agent callbacks.
+"""Platform Callbacks — Observability and composition for ADK agent callbacks.
 
 Provides:
-  - before_model_logger / after_model_logger: structured logging + Prometheus + SSE
+  - before_model_logger / after_model_logger: structured logging + Prometheus + SSE + cost tracking
   - pipeline_session_id ContextVar: async-safe session tracking
   - create_chained_before_callback / create_chained_after_callback: callback composition
+  - create_budget_guardrail: budget-based LLM call gating
 """
 
 from __future__ import annotations
@@ -18,7 +18,13 @@ from typing import Optional, Callable
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.models import LlmResponse, LlmRequest
 
-from autopilot.observability import AGENT_CALLS, AGENT_LATENCY
+from autopilot.observability import (
+    AGENT_CALLS,
+    AGENT_LATENCY,
+    TOKEN_USAGE,
+    ESTIMATED_COST_USD,
+)
+from autopilot.core.cost import get_cost_tracker
 
 logger = structlog.get_logger(__name__)
 
@@ -114,7 +120,7 @@ def before_model_logger(
 def after_model_logger(
     callback_context: CallbackContext, llm_response: LlmResponse
 ) -> Optional[LlmResponse]:
-    """Logs LLM response with latency metrics and instruments Prometheus."""
+    """Logs LLM response with latency metrics, cost tracking, and Prometheus."""
     agent_name = callback_context.agent_name
     times = _get_times()
     start = times.pop(agent_name, None)
@@ -131,15 +137,52 @@ def after_model_logger(
             if part.text:
                 response_length += len(part.text)
 
+    # ── Cost tracking (usage_metadata extraction) ─────────────────────
+    usage = llm_response.usage_metadata
+    prompt_tokens = 0
+    candidates_tokens = 0
+    cached_tokens = 0
+
+    if usage is not None:
+        prompt_tokens = usage.prompt_token_count or 0
+        candidates_tokens = usage.candidates_token_count or 0
+        cached_tokens = usage.cached_content_token_count or 0
+
+        # Record in the per-execution CostTracker
+        model_name = getattr(llm_response, "model_version", "") or ""
+        tracker = get_cost_tracker()
+        cost_before = tracker.estimated_cost_usd
+        tracker.record(agent_name, usage, model_name)
+        call_cost = tracker.estimated_cost_usd - cost_before
+
+        # ── Prometheus token metrics ──────────────────────────────────
+        TOKEN_USAGE.labels(agent_name=agent_name, token_type="prompt").inc(
+            prompt_tokens
+        )
+        TOKEN_USAGE.labels(agent_name=agent_name, token_type="candidates").inc(
+            candidates_tokens
+        )
+        if cached_tokens:
+            TOKEN_USAGE.labels(agent_name=agent_name, token_type="cached").inc(
+                cached_tokens
+            )
+        if call_cost > 0:
+            ESTIMATED_COST_USD.labels(agent_name=agent_name, model=model_name).inc(
+                call_cost
+            )
+
     logger.info(
         "llm_call_completed",
         agent=agent_name,
         latency_ms=latency_ms,
         response_length=response_length,
         has_tool_calls=has_tool_calls,
+        prompt_tokens=prompt_tokens,
+        candidates_tokens=candidates_tokens,
+        cached_tokens=cached_tokens,
     )
 
-    # ── Prometheus metrics ────────────────────────────────────────────
+    # ── Prometheus latency metrics ────────────────────────────────────
     AGENT_CALLS.labels(agent_name=agent_name, status="success").inc()
     AGENT_LATENCY.labels(agent_name=agent_name).observe(latency_s)
 
@@ -151,6 +194,9 @@ def after_model_logger(
             "latency_ms": latency_ms,
             "response_length": response_length,
             "has_tool_calls": has_tool_calls,
+            "prompt_tokens": prompt_tokens,
+            "candidates_tokens": candidates_tokens,
+            "cached_tokens": cached_tokens,
         },
     )
 
@@ -209,3 +255,65 @@ def create_chained_after_callback(
         return None  # All passed, no modifications
 
     return chained_after_callback
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  Budget Guardrail Factory
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+def create_budget_guardrail(max_cost_usd: float) -> BeforeCallback:
+    """Create a before_model_callback that blocks LLM calls when budget exceeded.
+
+    When the accumulated cost of the current execution exceeds
+    ``max_cost_usd``, the callback returns a blocked ``LlmResponse``
+    with an error message instead of allowing the LLM call to proceed.
+
+    Args:
+        max_cost_usd: Maximum allowed cost in USD for this execution.
+
+    Returns:
+        A ``BeforeCallback`` suitable for ``create_chained_before_callback``.
+    """
+    from google.genai import types as genai_types
+
+    def budget_guardrail(
+        callback_context: CallbackContext, llm_request: LlmRequest
+    ) -> Optional[LlmResponse]:
+        tracker = get_cost_tracker()
+        current_cost = tracker.estimated_cost_usd
+
+        if current_cost >= max_cost_usd:
+            agent_name = callback_context.agent_name
+            logger.warning(
+                "budget_exceeded",
+                agent=agent_name,
+                current_cost_usd=round(current_cost, 6),
+                max_cost_usd=max_cost_usd,
+                llm_calls=tracker.llm_calls,
+            )
+            _publish_event_async(
+                "budget.exceeded",
+                {
+                    "agent": agent_name,
+                    "current_cost_usd": round(current_cost, 6),
+                    "max_cost_usd": max_cost_usd,
+                },
+            )
+            return LlmResponse(
+                content=genai_types.Content(
+                    role="model",
+                    parts=[
+                        genai_types.Part(
+                            text=f"Budget exceeded: ${current_cost:.4f} >= ${max_cost_usd:.4f}. "
+                            f"LLM call blocked for agent '{agent_name}'."
+                        )
+                    ],
+                ),
+                error_code="BUDGET_EXCEEDED",
+                error_message=f"Execution budget of ${max_cost_usd} exceeded.",
+            )
+
+        return None  # Under budget — proceed
+
+    return budget_guardrail

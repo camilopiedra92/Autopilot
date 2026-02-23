@@ -151,6 +151,20 @@ AGENT_LATENCY = Histogram(
     namespace="autopilot",
 )
 
+TOKEN_USAGE = Counter(
+    "token_usage_total",
+    "Total token usage by agent and type",
+    ["agent_name", "token_type"],
+    namespace="autopilot",
+)
+
+ESTIMATED_COST_USD = Counter(
+    "estimated_cost_usd_total",
+    "Estimated USD cost by agent and model",
+    ["agent_name", "model"],
+    namespace="autopilot",
+)
+
 
 # ── Metric Factories ─────────────────────────────────────────────────
 
