@@ -203,6 +203,65 @@ def mock_ynab_client():
         }
     )
     client.get_recent_transactions = AsyncMock(return_value=[])
+    # New expanded API methods
+    client.get_transactions = AsyncMock(
+        return_value={"data": {"transactions": [], "server_knowledge": 100}}
+    )
+    client.get_transaction = AsyncMock(
+        return_value={"id": "tx-mock-001", "payee_name": "Test", "amount": -50000}
+    )
+    client.bulk_create_transactions = AsyncMock(
+        return_value={"data": {"transactions": [], "transaction_ids": []}}
+    )
+    client.update_transaction = AsyncMock(
+        return_value={"data": {"transaction": {"id": "tx-mock-001"}}}
+    )
+    client.bulk_update_transactions = AsyncMock(
+        return_value={"data": {"transactions": []}}
+    )
+    client.delete_transaction = AsyncMock(
+        return_value={"data": {"transaction": {"id": "tx-mock-001", "deleted": True}}}
+    )
+    client.get_scheduled_transactions = AsyncMock(
+        return_value={"data": {"scheduled_transactions": [], "server_knowledge": 50}}
+    )
+    client.get_scheduled_transaction = AsyncMock(
+        return_value={"id": "stx-mock-001", "payee_name": "Netflix"}
+    )
+    client.create_scheduled_transaction = AsyncMock(
+        return_value={"data": {"scheduled_transaction": {"id": "stx-mock-001"}}}
+    )
+    client.update_scheduled_transaction = AsyncMock(
+        return_value={"data": {"scheduled_transaction": {"id": "stx-mock-001"}}}
+    )
+    client.delete_scheduled_transaction = AsyncMock(
+        return_value={"data": {"scheduled_transaction": {"id": "stx-mock-001"}}}
+    )
+    client.get_payees = AsyncMock(
+        return_value={"data": {"payees": [], "server_knowledge": 75}}
+    )
+    client.get_payee = AsyncMock(
+        return_value={"id": "payee-mock-001", "name": "Amazon"}
+    )
+    client.update_payee = AsyncMock(
+        return_value={"data": {"payee": {"id": "payee-mock-001"}}}
+    )
+    client.get_months = AsyncMock(
+        return_value={"data": {"months": [], "server_knowledge": 88}}
+    )
+    client.get_month = AsyncMock(
+        return_value={"month": "2026-02-01", "income": 5000000, "categories": []}
+    )
+    client.create_account = AsyncMock(
+        return_value={"data": {"account": {"id": "acc-mock-001"}}}
+    )
+    client.update_category = AsyncMock(
+        return_value={"data": {"category": {"id": "cat-mock-001"}}}
+    )
+    client.update_month_category = AsyncMock(
+        return_value={"data": {"category": {"id": "cat-mock-001"}}}
+    )
+    client.get_user = AsyncMock(return_value={"id": "user-mock-001"})
     client.close = AsyncMock()
     return client
 

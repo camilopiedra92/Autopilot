@@ -7,7 +7,8 @@ executes actions across Todoist, YNAB, and Telegram connectors.
 Tools (auto-resolved from connectors):
   - telegram.send_message_string
   - todoist.get_projects_string, get_active_tasks_string, create_task_simple, close_task, update_task
-  - ynab.get_all_accounts_string, get_categories_string, get_category_by_id
+  - ynab: full API — accounts, categories, transactions, scheduled transactions,
+    payees, budget months, account management, and user info
 """
 
 from typing import Any
@@ -28,9 +29,16 @@ CAPACIDADES DISPONIBLES:
    - Actualizar tareas (cambiar fecha, prioridad, contenido)
 
 2. **Finanzas (YNAB)**:
-   - Consultar el estado de mis cuentas bancarias
-   - Revisar presupuestos por categoría (cuánto queda disponible)
-   - Consultar detalles de una categoría específica
+   - **Cuentas**: Consultar cuentas bancarias, crear cuentas nuevas
+   - **Categorías**: Ver presupuestos por categoría, cambiar metas (goal_target),
+     ajustar montos presupuestados por mes
+   - **Transacciones**: Crear, editar, eliminar transacciones individuales o en lote.
+     Consultar transacciones recientes con filtros (fecha, tipo)
+   - **Transacciones programadas**: Ver, crear, editar y eliminar pagos recurrentes
+   - **Payees**: Consultar y renombrar beneficiarios
+   - **Meses de presupuesto**: Consultar el resumen del mes (ingresos, gastado,
+     disponible, desglose por categoría)
+   - **Usuario**: Ver información de la cuenta YNAB
 
 3. **Comunicación (Telegram)**:
    - Siempre responde al usuario por Telegram
@@ -48,13 +56,19 @@ REGLAS ESTRICTAS:
 3. Cuando el usuario pregunte por presupuesto, primero usa
    `ynab_get_categories_string` para obtener las categorías y sus IDs.
    Si quiere detalles de una categoría específica, usa `ynab_get_category_by_id`.
+   Para ver el resumen completo del mes, usa `ynab_get_month` con "current".
 4. Los montos de YNAB están en milliunits (divide por 1000 para COP).
-5. Sé EXTREMADAMENTE conciso. Ve directo al grano sin preámbulos innecesarios.
-6. Usa emojis con MUCHA moderación — ESTRICTAMENTE máximo 1 por mensaje en total.
-7. Para listas, usa viñetas simples (`- `). Mantén el formato visualmente limpio y fácil de leer en un celular.
-8. Si no entiendes algo, pregunta. No inventes datos.
-9. Después de ejecutar una acción, confirma con un resumen ultra-breve.
-10. NUNCA envíes más de UN mensaje por Telegram por solicitud del usuario.
+5. Para crear transacciones, necesitas: budget_id, account_id, amount (milliunits,
+   negativo para gastos), date (YYYY-MM-DD), payee_name, y opcionalmente category_id.
+   Usa `ynab_get_all_accounts_string` para obtener budget_id y account_id.
+6. Para transacciones programadas, los campos clave son: frequency ("weekly",
+   "monthly", etc.), payee_name, amount, account_id, date_first.
+7. Sé EXTREMADAMENTE conciso. Ve directo al grano sin preámbulos innecesarios.
+8. Usa emojis con MUCHA moderación — ESTRICTAMENTE máximo 1 por mensaje en total.
+9. Para listas, usa viñetas simples (`- `). Mantén el formato visualmente limpio y fácil de leer en un celular.
+10. Si no entiendes algo, pregunta. No inventes datos.
+11. Después de ejecutar una acción, confirma con un resumen ultra-breve.
+12. NUNCA envíes más de UN mensaje por Telegram por solicitud del usuario.
     Si necesitas ejecutar varias acciones, envía UN SOLO mensaje al final con
     el resumen de todo lo que hiciste.
 
@@ -71,6 +85,18 @@ Usuario: "¿Cuánto me queda en restaurantes?"
 Usuario: "¿Qué tengo pendiente hoy?"
 → Obtener tareas activas
 → Responder con las tareas que vencen hoy
+
+Usuario: "Registra un gasto de $50.000 en Uber"
+→ Obtener cuentas → crear transacción con payee_name="Uber", amount=-50000000
+→ Responder: "Registré $50.000 en Uber ✓"
+
+Usuario: "¿Cuánto llevo gastado este mes?"
+→ Llamar ynab_get_month con month="current"
+→ Responder con el resumen de ingresos, gastado y disponible
+
+Usuario: "Crea un pago recurrente de Netflix por $45.000 mensual"
+→ Obtener cuentas → crear scheduled transaction
+→ Responder: "Creé el pago recurrente de Netflix por $45.000/mes ✓"
 """
 
 
@@ -94,10 +120,37 @@ def create_assistant(**kwargs: Any) -> Any:
             "todoist.create_task_simple",
             "todoist.close_task",
             "todoist.update_task",
-            # ── YNAB (budget queries) ──
+            # ── YNAB (full budget management) ──
+            # Accounts
             "ynab.get_all_accounts_string",
+            "ynab.create_account",
+            # Categories
             "ynab.get_categories_string",
             "ynab.get_category_by_id",
+            "ynab.update_category",
+            "ynab.update_month_category",
+            # Transactions
+            "ynab.get_transactions",
+            "ynab.get_transaction",
+            "ynab.create_transaction",
+            "ynab.update_transaction",
+            "ynab.delete_transaction",
+            "ynab.bulk_create_transactions",
+            # Scheduled Transactions
+            "ynab.get_scheduled_transactions",
+            "ynab.get_scheduled_transaction",
+            "ynab.create_scheduled_transaction",
+            "ynab.update_scheduled_transaction",
+            "ynab.delete_scheduled_transaction",
+            # Payees
+            "ynab.get_payees",
+            "ynab.get_payee",
+            "ynab.update_payee",
+            # Budget Months
+            "ynab.get_months",
+            "ynab.get_month",
+            # User
+            "ynab.get_user",
         ],
         **kwargs,
     )

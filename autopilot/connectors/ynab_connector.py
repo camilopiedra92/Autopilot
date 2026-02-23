@@ -244,6 +244,8 @@ class AsyncYNABClient:
         categories = await self.get_categories(budget_id)
         return any(c["id"] == category_id for c in categories)
 
+    # ── Transactions ────────────────────────────────────────────────────
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=30),
@@ -252,7 +254,7 @@ class AsyncYNABClient:
     async def create_transaction(
         self, budget_id: str, transaction_payload: dict
     ) -> dict:
-        """Create a transaction in YNAB."""
+        """Create a single transaction in YNAB."""
         logger.info(
             "ynab_creating_transaction",
             budget_id=budget_id,
@@ -269,16 +271,438 @@ class AsyncYNABClient:
         )
         return data
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def bulk_create_transactions(
+        self, budget_id: str, transactions: list[dict]
+    ) -> dict:
+        """Create multiple transactions in a single API call."""
+        logger.info(
+            "ynab_bulk_creating_transactions",
+            budget_id=budget_id,
+            count=len(transactions),
+        )
+        data = await self._request(
+            "POST",
+            f"/budgets/{budget_id}/transactions",
+            json={"transactions": transactions},
+        )
+        ids = [t["id"] for t in data["data"].get("transactions", [])]
+        logger.info("ynab_bulk_transactions_created", count=len(ids))
+        return data
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def get_transactions(
+        self,
+        budget_id: str,
+        *,
+        since_date: str | None = None,
+        type: str | None = None,
+        last_knowledge_of_server: int | None = None,
+    ) -> dict:
+        """Fetch transactions for a budget with optional filters.
+
+        Args:
+            since_date: Only return transactions on or after this date (ISO 8601).
+            type: Filter by type — 'uncategorized' or 'unapproved'.
+            last_knowledge_of_server: Delta request support.
+
+        Returns:
+            Full response dict including data.transactions and data.server_knowledge.
+        """
+        params: dict = {}
+        if since_date:
+            params["since_date"] = since_date
+        if type:
+            params["type"] = type
+        if last_knowledge_of_server is not None:
+            params["last_knowledge_of_server"] = last_knowledge_of_server
+        data = await self._request(
+            "GET", f"/budgets/{budget_id}/transactions", params=params or None
+        )
+        return data
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def get_transaction(self, budget_id: str, transaction_id: str) -> dict:
+        """Fetch a single transaction by ID."""
+        data = await self._request(
+            "GET", f"/budgets/{budget_id}/transactions/{transaction_id}"
+        )
+        return data["data"]["transaction"]
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def update_transaction(
+        self, budget_id: str, transaction_id: str, transaction_payload: dict
+    ) -> dict:
+        """Update an existing transaction."""
+        logger.info(
+            "ynab_updating_transaction",
+            budget_id=budget_id,
+            transaction_id=transaction_id,
+        )
+        data = await self._request(
+            "PATCH",
+            f"/budgets/{budget_id}/transactions/{transaction_id}",
+            json={"transaction": transaction_payload},
+        )
+        logger.info("ynab_transaction_updated", transaction_id=transaction_id)
+        return data
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def bulk_update_transactions(
+        self, budget_id: str, transactions: list[dict]
+    ) -> dict:
+        """Update multiple transactions in a single API call."""
+        logger.info(
+            "ynab_bulk_updating_transactions",
+            budget_id=budget_id,
+            count=len(transactions),
+        )
+        data = await self._request(
+            "PATCH",
+            f"/budgets/{budget_id}/transactions",
+            json={"transactions": transactions},
+        )
+        logger.info("ynab_bulk_transactions_updated", count=len(transactions))
+        return data
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def delete_transaction(self, budget_id: str, transaction_id: str) -> dict:
+        """Delete a transaction."""
+        logger.info(
+            "ynab_deleting_transaction",
+            budget_id=budget_id,
+            transaction_id=transaction_id,
+        )
+        data = await self._request(
+            "DELETE", f"/budgets/{budget_id}/transactions/{transaction_id}"
+        )
+        logger.info("ynab_transaction_deleted", transaction_id=transaction_id)
+        return data
+
     async def get_recent_transactions(
         self, budget_id: str, account_id: str, since_date: str
     ) -> list[dict]:
-        """Fetch recent transactions for duplicate detection."""
+        """Fetch recent transactions for a specific account (duplicate detection)."""
         data = await self._request(
             "GET",
             f"/budgets/{budget_id}/accounts/{account_id}/transactions",
             params={"since_date": since_date},
         )
         return data["data"]["transactions"]
+
+    # ── Scheduled Transactions ───────────────────────────────────────
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def get_scheduled_transactions(
+        self, budget_id: str, *, last_knowledge_of_server: int | None = None
+    ) -> dict:
+        """Fetch all scheduled transactions for a budget."""
+        params: dict = {}
+        if last_knowledge_of_server is not None:
+            params["last_knowledge_of_server"] = last_knowledge_of_server
+        data = await self._request(
+            "GET",
+            f"/budgets/{budget_id}/scheduled_transactions",
+            params=params or None,
+        )
+        return data
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def get_scheduled_transaction(
+        self, budget_id: str, scheduled_transaction_id: str
+    ) -> dict:
+        """Fetch a single scheduled transaction by ID."""
+        data = await self._request(
+            "GET",
+            f"/budgets/{budget_id}/scheduled_transactions/{scheduled_transaction_id}",
+        )
+        return data["data"]["scheduled_transaction"]
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def create_scheduled_transaction(
+        self, budget_id: str, scheduled_transaction_payload: dict
+    ) -> dict:
+        """Create a new scheduled transaction."""
+        logger.info(
+            "ynab_creating_scheduled_transaction",
+            budget_id=budget_id,
+            payee=scheduled_transaction_payload.get("payee_name", "unknown"),
+        )
+        data = await self._request(
+            "POST",
+            f"/budgets/{budget_id}/scheduled_transactions",
+            json={"scheduled_transaction": scheduled_transaction_payload},
+        )
+        logger.info(
+            "ynab_scheduled_transaction_created",
+            id=data["data"]["scheduled_transaction"]["id"],
+        )
+        return data
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def update_scheduled_transaction(
+        self, budget_id: str, scheduled_transaction_id: str, payload: dict
+    ) -> dict:
+        """Update an existing scheduled transaction."""
+        logger.info(
+            "ynab_updating_scheduled_transaction",
+            budget_id=budget_id,
+            id=scheduled_transaction_id,
+        )
+        data = await self._request(
+            "PUT",
+            f"/budgets/{budget_id}/scheduled_transactions/{scheduled_transaction_id}",
+            json={"scheduled_transaction": payload},
+        )
+        logger.info("ynab_scheduled_transaction_updated", id=scheduled_transaction_id)
+        return data
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def delete_scheduled_transaction(
+        self, budget_id: str, scheduled_transaction_id: str
+    ) -> dict:
+        """Delete a scheduled transaction."""
+        logger.info(
+            "ynab_deleting_scheduled_transaction",
+            budget_id=budget_id,
+            id=scheduled_transaction_id,
+        )
+        data = await self._request(
+            "DELETE",
+            f"/budgets/{budget_id}/scheduled_transactions/{scheduled_transaction_id}",
+        )
+        logger.info("ynab_scheduled_transaction_deleted", id=scheduled_transaction_id)
+        return data
+
+    # ── Payees ───────────────────────────────────────────────────────
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def get_payees(
+        self, budget_id: str, *, last_knowledge_of_server: int | None = None
+    ) -> dict:
+        """Fetch all payees for a budget."""
+        params: dict = {}
+        if last_knowledge_of_server is not None:
+            params["last_knowledge_of_server"] = last_knowledge_of_server
+        data = await self._request(
+            "GET", f"/budgets/{budget_id}/payees", params=params or None
+        )
+        return data
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def get_payee(self, budget_id: str, payee_id: str) -> dict:
+        """Fetch a single payee by ID."""
+        data = await self._request("GET", f"/budgets/{budget_id}/payees/{payee_id}")
+        return data["data"]["payee"]
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def update_payee(
+        self, budget_id: str, payee_id: str, payee_payload: dict
+    ) -> dict:
+        """Update a payee (e.g. rename)."""
+        logger.info(
+            "ynab_updating_payee",
+            budget_id=budget_id,
+            payee_id=payee_id,
+        )
+        data = await self._request(
+            "PUT",
+            f"/budgets/{budget_id}/payees/{payee_id}",
+            json={"payee": payee_payload},
+        )
+        logger.info("ynab_payee_updated", payee_id=payee_id)
+        return data
+
+    # ── Budget Months ────────────────────────────────────────────────
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def get_months(
+        self, budget_id: str, *, last_knowledge_of_server: int | None = None
+    ) -> dict:
+        """Fetch all budget months."""
+        params: dict = {}
+        if last_knowledge_of_server is not None:
+            params["last_knowledge_of_server"] = last_knowledge_of_server
+        data = await self._request(
+            "GET", f"/budgets/{budget_id}/months", params=params or None
+        )
+        return data
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def get_month(self, budget_id: str, month: str) -> dict:
+        """Fetch a single budget month detail (includes per-category breakdown).
+
+        Args:
+            month: Month in ISO format, e.g. '2026-02-01' or 'current'.
+        """
+        data = await self._request("GET", f"/budgets/{budget_id}/months/{month}")
+        return data["data"]["month"]
+
+    # ── Accounts (write) ─────────────────────────────────────────────
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def create_account(self, budget_id: str, account_payload: dict) -> dict:
+        """Create a new account in a budget.
+
+        Args:
+            account_payload: Dict with 'name', 'type', and 'balance' (milliunits).
+        """
+        logger.info(
+            "ynab_creating_account",
+            budget_id=budget_id,
+            name=account_payload.get("name", "unknown"),
+        )
+        data = await self._request(
+            "POST",
+            f"/budgets/{budget_id}/accounts",
+            json={"account": account_payload},
+        )
+        logger.info("ynab_account_created", account_id=data["data"]["account"]["id"])
+        self._accounts_cache.invalidate()
+        return data
+
+    # ── Categories (write) ───────────────────────────────────────────
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def update_category(
+        self, budget_id: str, category_id: str, category_payload: dict
+    ) -> dict:
+        """Update a category (e.g. change goal_target).
+
+        Args:
+            category_payload: Dict with fields to update (e.g. 'goal_target').
+        """
+        logger.info(
+            "ynab_updating_category",
+            budget_id=budget_id,
+            category_id=category_id,
+        )
+        data = await self._request(
+            "PATCH",
+            f"/budgets/{budget_id}/categories/{category_id}",
+            json={"category": category_payload},
+        )
+        logger.info("ynab_category_updated", category_id=category_id)
+        self._categories_cache.invalidate()
+        return data
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def update_month_category(
+        self, budget_id: str, month: str, category_id: str, category_payload: dict
+    ) -> dict:
+        """Update a category's budgeted amount for a specific month.
+
+        Args:
+            month: Month in ISO format, e.g. '2026-02-01'.
+            category_payload: Dict with 'budgeted' (milliunits).
+        """
+        logger.info(
+            "ynab_updating_month_category",
+            budget_id=budget_id,
+            month=month,
+            category_id=category_id,
+        )
+        data = await self._request(
+            "PATCH",
+            f"/budgets/{budget_id}/months/{month}/categories/{category_id}",
+            json={"category": category_payload},
+        )
+        logger.info(
+            "ynab_month_category_updated",
+            month=month,
+            category_id=category_id,
+        )
+        return data
+
+    # ── User ─────────────────────────────────────────────────────────
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type(YNABRateLimitError),
+    )
+    async def get_user(self) -> dict:
+        """Fetch the authenticated user's info."""
+        data = await self._request("GET", "/user")
+        return data["data"]["user"]
+
+    # ── Lifecycle ────────────────────────────────────────────────────
 
     async def close(self):
         """Close the underlying HTTP/2 connection pool."""
