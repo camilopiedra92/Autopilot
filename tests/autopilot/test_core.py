@@ -1623,3 +1623,66 @@ class TestStructuredOutputEnforcement:
         # No isolation when no output_schema
         assert agent.disallow_transfer_to_parent is False
         assert agent.disallow_transfer_to_peers is False
+
+    def test_create_platform_agent_injects_datetime(self):
+        """create_platform_agent should wrap instruction in a callable InstructionProvider
+        that prepends the current datetime in Spanish."""
+        from autopilot.agents.base import create_platform_agent
+        from google.adk.agents import LlmAgent
+
+        agent = create_platform_agent(
+            name="temporal_agent",
+            instruction="You are a helpful assistant.",
+            description="A test agent",
+        )
+
+        assert isinstance(agent, LlmAgent)
+
+        # instruction should be a callable (InstructionProvider), not a string
+        assert callable(agent.instruction), (
+            "instruction should be a callable InstructionProvider"
+        )
+
+        # Call the provider (it accepts a ReadonlyContext, but we can pass None
+        # since our implementation handles None gracefully)
+        result = agent.instruction(None)
+
+        # Should start with the datetime prefix
+        assert result.startswith("[Fecha y hora actual:"), (
+            f"Expected datetime prefix, got: {result[:80]}"
+        )
+
+        # Should contain the original instruction after the prefix
+        assert "You are a helpful assistant." in result
+
+        # Should contain the current year
+        import datetime
+        import zoneinfo
+
+        now = datetime.datetime.now(zoneinfo.ZoneInfo("America/Bogota"))
+        assert str(now.year) in result
+
+    def test_create_platform_agent_resolves_state_placeholders(self):
+        """InstructionProvider should resolve {key} placeholders from
+        ReadonlyContext.state — replicating ADK's native state injection."""
+        from autopilot.agents.base import create_platform_agent
+
+        agent = create_platform_agent(
+            name="state_agent",
+            instruction="Hello {user_name}, your chat_id is {chat_id}.",
+            description="Agent with placeholders",
+        )
+
+        assert callable(agent.instruction)
+
+        # Simulate a ReadonlyContext with state
+        mock_ctx = MagicMock()
+        mock_ctx.state = {"user_name": "Camilo", "chat_id": "12345"}
+
+        result = agent.instruction(mock_ctx)
+
+        # Placeholders should be resolved from state
+        assert "Camilo" in result
+        assert "12345" in result
+        assert "{user_name}" not in result
+        assert "{chat_id}" not in result

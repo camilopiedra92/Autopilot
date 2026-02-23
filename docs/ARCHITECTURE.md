@@ -198,6 +198,45 @@ agent = create_platform_agent(
 | `CONTEXT_CACHE_TTL_SECONDS` | `1800`  | Cache TTL (30 min)            |
 | `CONTEXT_CACHE_INTERVALS`   | `10`    | Max uses before refresh       |
 
+### Temporal Context & State Injection (ADK InstructionProvider)
+
+All agents created via `create_platform_agent` automatically know the current date and time. This is implemented using ADK's native **InstructionProvider** pattern — `LlmAgent(instruction=callable)` instead of a plain string.
+
+**How it works:**
+
+1. `create_platform_agent` wraps every `instruction` string in `_with_temporal_context(instruction)`, which returns a callable `(ReadonlyContext) -> str`
+2. ADK calls this callable on **every LLM invocation** — the datetime is always fresh, never stale
+3. The callable also resolves `{key}` placeholders from `ReadonlyContext.state`, replicating ADK's native state injection (which ADK disables for callable instructions per [ADK docs](https://google.github.io/adk-docs/sessions/state))
+
+```python
+# Platform-level — automatic, no opt-in needed
+agent = create_platform_agent(
+    name="assistant",
+    instruction="Help the user. Chat ID: {telegram_chat_id}.",
+    tools=[send_message],
+)
+# instruction is now a callable that:
+# 1. Prepends "[Fecha y hora actual: lunes 23 de febrero de 2026, 02:00 PM]"
+# 2. Resolves {telegram_chat_id} from session state
+```
+
+**Injecting per-request values**: Workflows put dynamic values into `ctx.state` (or pass them via `initial_state`) — the InstructionProvider resolves them at invocation time:
+
+```python
+# Workflow code — clean, no instruction wrapping
+adk_agent = create_assistant()
+agent = ADKAgent(adk_agent)
+
+ctx = AgentContext(pipeline_name="conversational_assistant")
+ctx.update({"telegram_chat_id": chat_id})  # Provider resolves {telegram_chat_id}
+
+result = await agent.invoke(ctx, {"message": user_message})
+```
+
+> [!CAUTION]
+> ⛔️ **NEVER** manually `.format()` or wrap `agent.instruction` in workflow code.
+> ✅ **ALWAYS** put dynamic values in `ctx.state` and let the platform InstructionProvider resolve `{key}` from `ReadonlyContext.state`.
+
 ## 3. Core Primitives (`autopilot.core`)
 
 The platform provides typed, observable primitives for building agentic workflows:

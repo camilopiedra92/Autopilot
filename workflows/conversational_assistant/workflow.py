@@ -104,11 +104,9 @@ class ConversationalAssistantWorkflow(BaseWorkflow):
                 error="No message provided",
             )
 
-        # Create the agent and format the instruction with the user's chat_id
+        # Create the agent — instruction placeholders like {telegram_chat_id}
+        # are resolved from session state by the platform InstructionProvider.
         adk_agent = create_assistant()
-        adk_agent.instruction = adk_agent.instruction.format(
-            telegram_chat_id=chat_id,
-        )
         agent = ADKAgent(adk_agent)
 
         ctx = AgentContext(
@@ -119,6 +117,9 @@ class ConversationalAssistantWorkflow(BaseWorkflow):
                 "session_id": f"telegram_{chat_id}",
             },
         )
+        # Put chat_id in state so the InstructionProvider resolves
+        # {telegram_chat_id} from ReadonlyContext.state — the ADK-native way.
+        ctx.update({"telegram_chat_id": chat_id})
 
         try:
             result = await agent.invoke(

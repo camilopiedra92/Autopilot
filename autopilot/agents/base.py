@@ -30,6 +30,74 @@ from autopilot.core.agent import BaseAgent, FallbackAgentAdapter, ADKAgent
 # ADK-native retry for transient 429s (Layer 1 — reactive)
 _DEFAULT_RETRY = types.HttpRetryOptions(initial_delay=1, attempts=3)
 
+# ── Spanish day/month names for temporal context ────────────────────
+_DAYS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+_MONTHS_ES = [
+    "",
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+]
+
+
+def _with_temporal_context(
+    instruction: str,
+) -> Callable:
+    """Wrap a static instruction into an ADK InstructionProvider.
+
+    Returns a callable ``(ReadonlyContext) -> str`` that:
+
+    1. Prepends the current date/time (Colombia TZ, Spanish locale).
+    2. Resolves ``{key}`` placeholders from ``ReadonlyContext.state``,
+       replicating ADK's native state injection (which is disabled when
+       using callable instructions per ADK docs).
+
+    ADK calls this function on **every LLM invocation**, so the timestamp is
+    always accurate — no stale data, no tech debt.
+
+    This is the canonical ADK approach:
+    ``LlmAgent(instruction=callable)`` instead of a plain string.
+    """
+    import datetime
+    import zoneinfo
+    from collections import defaultdict
+
+    _tz = zoneinfo.ZoneInfo("America/Bogota")
+
+    def provider(ctx) -> str:
+        now = datetime.datetime.now(_tz)
+        dt = (
+            f"{_DAYS_ES[now.weekday()]} {now.day} de "
+            f"{_MONTHS_ES[now.month]} de {now.year}, "
+            f"{now.strftime('%I:%M %p')}"
+        )
+        base = f"[Fecha y hora actual: {dt}]\n\n{instruction}"
+
+        # Resolve {key} placeholders from session state, just like ADK does
+        # for plain string instructions.  Unknown keys are left as-is.
+        if ctx is not None and hasattr(ctx, "state"):
+            state = ctx.state if callable(ctx.state) else ctx.state
+            if hasattr(state, "get"):
+                # defaultdict returns "{key}" for missing keys → safe substitution
+                safe = defaultdict(str, state)
+                try:
+                    base = base.format_map(safe)
+                except (KeyError, ValueError, IndexError):
+                    pass  # Malformed placeholders — leave instruction as-is
+
+        return base
+
+    return provider
+
 
 def create_platform_agent(
     name: str,
@@ -71,6 +139,11 @@ def create_platform_agent(
     """
     # Configure generation config if parameters provided
     gen_config = kwargs.pop("generate_content_config", None)
+
+    # Wrap the instruction in a temporal context provider so every agent
+    # knows the current date/time.  Uses ADK's native InstructionProvider
+    # pattern: LlmAgent(instruction=callable) — called on every LLM invocation.
+    instruction_provider = _with_temporal_context(instruction)
 
     # Auto-resolve tools passed as strings via the platform registry
     resolved_tools = []
@@ -146,7 +219,7 @@ def create_platform_agent(
     primary_agent = LlmAgent(
         name=name,
         model=model,
-        instruction=instruction,
+        instruction=instruction_provider,
         description=description,
         tools=resolved_tools,
         output_key=output_key,
@@ -172,7 +245,7 @@ def create_platform_agent(
     fallback_adk_agent = LlmAgent(
         name=f"{name}_fallback",
         model=fallback_model,
-        instruction=instruction,
+        instruction=instruction_provider,
         description=f"Fallback for {name}",
         tools=resolved_tools,
         output_key=output_key,
