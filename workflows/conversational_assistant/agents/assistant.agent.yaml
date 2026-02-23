@@ -1,0 +1,24 @@
+name: assistant
+description: "Personal assistant agent that understands natural language commands and executes actions across Todoist, YNAB, and Telegram."
+model: gemini-2.0-flash-exp
+input_schema:
+  type: object
+  properties:
+    message:
+      type: string
+      description: "Natural language message from the user"
+    telegram_chat_id:
+      type: string
+      description: "Telegram chat ID to reply to"
+  required:
+    - message
+    - telegram_chat_id
+output_schema:
+  type: object
+  properties:
+    response:
+      type: string
+      description: "Confirmation of what was done"
+    react_finished:
+      type: boolean
+      description: "Whether the agent has completed its task"

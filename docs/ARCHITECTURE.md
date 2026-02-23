@@ -202,49 +202,49 @@ agent = create_platform_agent(
 
 The platform provides typed, observable primitives for building agentic workflows:
 
-| Primitive                 | Purpose                                                                                            |
-| ------------------------- | -------------------------------------------------------------------------------------------------- |
-| `AgentContext`            | Execution context (logger, events, state, session, memory, tools)                                  |
-| `BaseAgent[In, Out]`      | Strictly typed agent contract with `invoke()` lifecycle                                            |
-| `FunctionalAgent`         | Auto-wraps plain Python functions as agents                                                        |
-| `ADKAgent`                | Bridges Google ADK `LlmAgent` into the platform contract (state-priority output)                   |
-| `ADKRunner`               | Executes native ADK agents via `Runner` + `SessionService` with retry/tracing/artifact persistence |
-| `SequentialAgentAdapter`  | Runs child agents in sequence, accumulating state (ADK `SequentialAgent`)                          |
-| `LoopAgentAdapter`        | Retries a body agent until exit condition met (ADK `LoopAgent`)                                    |
-| `ParallelAgentAdapter`    | Runs branches concurrently via `asyncio.gather` (ADK `ParallelAgent`)                              |
-| `FallbackAgentAdapter`    | Retries a primary agent, falling back to a secondary on error                                      |
-| `PipelineBuilder`         | Fluent API: `.step()`, `.loop()`, `.parallel()`                                                    |
-| `Pipeline`                | Sequential execution engine with full observability and HITL support                               |
-| `DAGBuilder`              | Fluent API for directed acyclic graph construction                                                 |
-| `DAGRunner`               | Topological parallel execution engine with automatic artifact persistence                          |
-| `ReactRunner`             | Agentic Reason-Act-Observe orchestration loop                                                      |
-| `RouterRunner`            | Semantic routing to sub-workflows based on intent                                                  |
-| `OrchestrationStrategy`   | Enum: `SEQUENTIAL`, `DAG`, `REACT`, `ROUTER`                                                       |
-| `BaseSessionService`      | ADK-native ABC — re-exported from `google.adk.sessions` (create/get/list/delete)                   |
-| `InMemorySessionService`  | ADK-native dict-backed session (auto-provisioned in `AgentContext`)                                |
-| `Session`                 | ADK Pydantic model — `id`, `app_name`, `user_id`, `state`, `events`                                |
-| `BaseMemoryService`       | ADK ABC for long-term memory (re-exported from `google.adk.memory`)                                |
-| `InMemoryMemoryService`   | ADK keyword-matching memory (dev/test, default)                                                    |
-| `BaseArtifactService`     | ADK ABC for versioned artifact storage (re-exported from `google.adk.artifacts`)                   |
-| `InMemoryArtifactService` | ADK in-memory artifact store (dev/test, default)                                                   |
-| `GcsArtifactService`      | Google Cloud Storage artifact store (production, `ARTIFACT_BACKEND=gcs`)                           |
-| `ToolRegistry`            | Centralized tool registry with `@tool` decorator and lazy connector resolution                     |
-| `ToolInfo`                | Pydantic metadata model for registered tools (incl. `requires_context`)                            |
-| `ToolCallbackManager`     | Before/after lifecycle hooks for tool invocations                                                  |
-| `ToolAuthConfig`          | Declarative per-tool credential configuration                                                      |
-| `ToolAuthManager`         | Credential store: resolution (cache→state→env), request/provide flows                              |
-| `LongRunningTool`         | Wrapper for async operations → ADK `LongRunningFunctionTool`                                       |
-| `OperationTracker`        | Lifecycle tracking for long-running tool operations                                                |
-| `MCPBridge`               | Platform wrapper for connecting to external MCP servers                                            |
-| `MCPRegistry`             | Multi-MCP-server lifecycle management                                                              |
-| `EventBus`                | Unified pub/sub message bus with middleware chain and replay (A2A)                                 |
-| `AgentMessage`            | Pydantic envelope: topic, sender, payload, correlation_id                                          |
-| `Subscription`            | Opaque handle for unsubscribing from the bus                                                       |
-| `DSLWorkflowDef`          | Pydantic schema for declarative YAML workflow definitions                                          |
-| `DSLStepDef`              | Schema for a single step (function, agent, loop, parallel, sequential)                             |
-| `DSLNodeDef`              | Schema for a DAG node with explicit dependencies                                                   |
-| `load_workflow(path)`     | Reads YAML → validates → resolves refs → returns `Pipeline` or `DAGRunner`                         |
-| `load_workflow_from_dict` | Same as above but from a pre-parsed dict (useful in tests)                                         |
+| Primitive                 | Purpose                                                                                                                     |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `AgentContext`            | Execution context (logger, events, state, session, memory, tools)                                                           |
+| `BaseAgent[In, Out]`      | Strictly typed agent contract with `invoke()` lifecycle                                                                     |
+| `FunctionalAgent`         | Auto-wraps plain Python functions as agents                                                                                 |
+| `ADKAgent`                | Bridges Google ADK `LlmAgent` into the platform contract (state-priority output)                                            |
+| `ADKRunner`               | Executes native ADK agents via `Runner` + `SessionService` with retry/tracing/artifact persistence/multi-turn session reuse |
+| `SequentialAgentAdapter`  | Runs child agents in sequence, accumulating state (ADK `SequentialAgent`)                                                   |
+| `LoopAgentAdapter`        | Retries a body agent until exit condition met (ADK `LoopAgent`)                                                             |
+| `ParallelAgentAdapter`    | Runs branches concurrently via `asyncio.gather` (ADK `ParallelAgent`)                                                       |
+| `FallbackAgentAdapter`    | Retries a primary agent, falling back to a secondary on error                                                               |
+| `PipelineBuilder`         | Fluent API: `.step()`, `.loop()`, `.parallel()`                                                                             |
+| `Pipeline`                | Sequential execution engine with full observability and HITL support                                                        |
+| `DAGBuilder`              | Fluent API for directed acyclic graph construction                                                                          |
+| `DAGRunner`               | Topological parallel execution engine with automatic artifact persistence                                                   |
+| `ReactRunner`             | Agentic Reason-Act-Observe orchestration loop                                                                               |
+| `RouterRunner`            | Semantic routing to sub-workflows based on intent                                                                           |
+| `OrchestrationStrategy`   | Enum: `SEQUENTIAL`, `DAG`, `REACT`, `ROUTER`                                                                                |
+| `BaseSessionService`      | ADK-native ABC — re-exported from `google.adk.sessions` (create/get/list/delete)                                            |
+| `InMemorySessionService`  | ADK-native dict-backed session (auto-provisioned in `AgentContext`)                                                         |
+| `Session`                 | ADK Pydantic model — `id`, `app_name`, `user_id`, `state`, `events`                                                         |
+| `BaseMemoryService`       | ADK ABC for long-term memory (re-exported from `google.adk.memory`)                                                         |
+| `InMemoryMemoryService`   | ADK keyword-matching memory (dev/test, default)                                                                             |
+| `BaseArtifactService`     | ADK ABC for versioned artifact storage (re-exported from `google.adk.artifacts`)                                            |
+| `InMemoryArtifactService` | ADK in-memory artifact store (dev/test, default)                                                                            |
+| `GcsArtifactService`      | Google Cloud Storage artifact store (production, `ARTIFACT_BACKEND=gcs`)                                                    |
+| `ToolRegistry`            | Centralized tool registry with `@tool` decorator and lazy connector resolution                                              |
+| `ToolInfo`                | Pydantic metadata model for registered tools (incl. `requires_context`)                                                     |
+| `ToolCallbackManager`     | Before/after lifecycle hooks for tool invocations                                                                           |
+| `ToolAuthConfig`          | Declarative per-tool credential configuration                                                                               |
+| `ToolAuthManager`         | Credential store: resolution (cache→state→env), request/provide flows                                                       |
+| `LongRunningTool`         | Wrapper for async operations → ADK `LongRunningFunctionTool`                                                                |
+| `OperationTracker`        | Lifecycle tracking for long-running tool operations                                                                         |
+| `MCPBridge`               | Platform wrapper for connecting to external MCP servers                                                                     |
+| `MCPRegistry`             | Multi-MCP-server lifecycle management                                                                                       |
+| `EventBus`                | Unified pub/sub message bus with middleware chain and replay (A2A)                                                          |
+| `AgentMessage`            | Pydantic envelope: topic, sender, payload, correlation_id                                                                   |
+| `Subscription`            | Opaque handle for unsubscribing from the bus                                                                                |
+| `DSLWorkflowDef`          | Pydantic schema for declarative YAML workflow definitions                                                                   |
+| `DSLStepDef`              | Schema for a single step (function, agent, loop, parallel, sequential)                                                      |
+| `DSLNodeDef`              | Schema for a DAG node with explicit dependencies                                                                            |
+| `load_workflow(path)`     | Reads YAML → validates → resolves refs → returns `Pipeline` or `DAGRunner`                                                  |
+| `load_workflow_from_dict` | Same as above but from a pre-parsed dict (useful in tests)                                                                  |
 
 ### ADKAgent Output Extraction & Structured Output Enforcement
 
@@ -368,6 +368,37 @@ Layer 6: [synthesize_transaction]
 Layer 7: [push_to_ynab]
 Layer 8: [publish_transaction_event]
 ```
+
+### Conversational Assistant (conversational_assistant — Production)
+
+The `conversational_assistant` workflow uses a **single `ADKAgent` invocation** — no pipeline or DAG needed. The agent autonomously calls tools and replies within one ADK session:
+
+```python
+from autopilot.core.agent import ADKAgent
+from autopilot.core.context import AgentContext
+
+adk_agent = create_assistant()  # 9 tools: Telegram, Todoist, YNAB
+adk_agent.instruction = adk_agent.instruction.format(telegram_chat_id=chat_id)
+agent = ADKAgent(adk_agent)
+
+ctx = AgentContext(
+    pipeline_name="conversational_assistant",
+    metadata={"session_id": f"telegram_{chat_id}"},  # Multi-turn session
+)
+
+result = await agent.invoke(ctx, {"message": user_message})
+```
+
+**Multi-turn conversation**: The `session_id` is derived from the Telegram `chat_id`, so the same user always gets the same ADK session. The `ADKRunner` uses a **get-or-create** pattern (aligned with [ADK official docs](https://google.github.io/adk-docs/streaming/dev-guide/part1)) to resume existing sessions:
+
+```python
+# ADKRunner._run_adk_agent() — get-or-create pattern
+session = await session_service.get_session(app_name, user_id, session_id)
+if session is None:
+    session = await session_service.create_session(app_name, user_id, session_id, state={})
+```
+
+In production (`SESSION_BACKEND=firestore`), conversation history persists across container restarts.
 
 ### Composition Patterns
 
@@ -513,6 +544,7 @@ Every `AgentContext` includes **session** (ADK `Session` object) and **memory** 
 - Session uses Google ADK's native `SessionService` contract — `create_session()`, `get_session()`, `list_sessions()`, `delete_session()`, `append_event()`.
 - `ctx.session` **is** the ADK `Session` directly — `ctx.session.state` is a plain dict, no async wrappers.
 - Session backend is selected via `SESSION_BACKEND` env var using `create_session_service()` factory. Default `InMemorySessionService` for dev/test; `FirestoreSessionService` for production.
+- **Multi-turn conversations**: `ADKRunner.run()` accepts an optional `session_id`. When provided, it uses a **get-or-create** pattern to resume existing sessions. Callers pass `session_id` via `ctx.metadata["session_id"]` — `ADKAgent.run()` threads it through automatically.
 - Memory backend is selected via `MEMORY_BACKEND` env var using `create_memory_service()` factory. Default `InMemoryMemoryService` for dev/test; `VertexAiMemoryBankService` for production.
 
 #### Session Backend Selection (12-Factor Config-Driven)
@@ -1074,6 +1106,11 @@ Pub/Sub Push → webhook (thin adapter)
           ┌───────┴───────┐
           ▼               ▼ (future workflows)
     bank_to_ynab     expense_auditor
+
+  POST /telegram/webhook
+          │
+          ▼
+  conversational_assistant (ADKAgent — multi-turn)
           │
           ▼
     bus.publish("transaction.created")
@@ -1232,6 +1269,10 @@ skills:
     name: Bank to YNAB
     description: Parse bank emails and create YNAB transactions
     tags: [finance, automation]
+  - id: conversational_assistant
+    name: Conversational Assistant
+    description: Telegram bot with Todoist/YNAB tools (multi-turn)
+    tags: [assistant, telegram, todoist, ynab]
 ```
 
 **Message Protocol**: The first `TextPart` of an A2A message must be JSON with a required `workflow` key:
@@ -1621,6 +1662,27 @@ Use the **Connector Pattern** for external integrations.
 2. **Schema-First**: Define Pydantic models for inputs and outputs before writing logic.
 3. **Test-Driven**: Update `tests/` when modifying logic.
 4. **No V2**: There is no legacy code path. Only edge-native patterns.
+5. **Git-Tagged Versions**: Version is auto-derived from git tags by `setuptools-scm`. ⛔️ **NEVER** hardcode a version string. ✅ **ALWAYS** tag a release with `git tag vX.Y.Z`.
+
+### Versioning Strategy
+
+The platform version is auto-derived from git tags — zero manual edits.
+
+| Component                          | Purpose                                              |
+| ---------------------------------- | ---------------------------------------------------- |
+| `setuptools-scm` (build-time)      | Reads git tags → generates `autopilot/_version.py`   |
+| `importlib.metadata` (runtime)     | PEP 566 standard version lookup (primary)            |
+| `autopilot/_version.py` (fallback) | Auto-generated file for editable installs and Docker |
+
+**Version derivation:**
+
+- Exactly on tag `v5.0.0` → `5.0.0`
+- 3 commits after tag → `5.0.1.dev3+g<sha>`
+
+**Docker integration:** CI passes `SETUPTOOLS_SCM_PRETEND_VERSION` build arg — no `.git/` in Docker.
+
+> [!CAUTION]
+> `autopilot/_version.py` is **gitignored** — it's a build artifact, never committed.
 
 ## 10. CI/CD & Deployment Standards
 

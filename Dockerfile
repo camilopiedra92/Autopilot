@@ -3,6 +3,10 @@
 # Pin exact Python version for reproducible builds
 FROM python:3.13.2-slim AS builder
 
+# Version injected at build time by CI (setuptools-scm)
+ARG SETUPTOOLS_SCM_PRETEND_VERSION
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${SETUPTOOLS_SCM_PRETEND_VERSION}
+
 WORKDIR /app
 
 # Ensure apt doesn't throw warnings about lack of UI

@@ -1,0 +1,26 @@
+name: conversational_assistant
+display_name: "Asistente Personal 💬"
+description: "Bot de Telegram que entiende comandos naturales y ejecuta acciones en Todoist, YNAB y más."
+version: "1.0.0"
+icon: "💬"
+color: "#0088cc"
+
+triggers:
+  - type: webhook
+    path: /telegram/webhook
+    description: "Telegram Bot API webhook for incoming messages"
+
+settings:
+  - key: telegram_chat_id
+    type: string
+    required: true
+    description: "Authorized Telegram chat ID for the personal assistant"
+
+agents:
+  cards_dir: agents/
+
+tags:
+  - assistant
+  - telegram
+  - todoist
+  - ynab

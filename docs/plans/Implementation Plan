@@ -244,11 +244,12 @@ Default changed from `"*"` to `""` — CORS is now **disabled by default** (head
 
 ---
 
-### A7. Version String — `"5.0.0"` But No Changelog
+### ✅ A7. Version String — Auto-Derived from Git Tags — DONE
 
-The app claims `v5.0.0` but there's no `CHANGELOG.md` or release strategy. For a world-class platform, version should be auto-derived from git tags.
+Replaced hardcoded `version = "5.0.0"` and fragile `_read_version()` file-parser with `setuptools-scm` auto-derivation from git tags. `version.py` now uses `importlib.metadata` (PEP 566) with `_version.py` fallback. Docker uses `SETUPTOOLS_SCM_PRETEND_VERSION` build arg (no `.git/` in Docker). CI updated with `fetch-depth: 0` and version derivation step. Initial `v5.0.0` tag created.
 
-**Recommendation**: Use `setuptools-scm` or `hatch-vcs` to auto-derive version from git tags. Eliminates manual `version.py` edits.
+> [!NOTE]
+> **COMPLETED** — Zero hardcoded versions. `setuptools-scm` auto-derives from git tags. 4 new tests, 603 total passing.
 
 ---
 
@@ -376,9 +377,9 @@ Files: `autopilot/agents/rate_limiter.py` (new), `autopilot/agents/base.py`, `au
 
 ### Long-Term (Quarter) — World-Class Edge
 
-| #   | Action                        | Type    | Effort |
-| --- | ----------------------------- | ------- | ------ |
-| A2  | ~~ADK-native Memory Service~~ | ✅ DONE | —      |
-| N3  | ~~Gemini context caching~~    | ✅ DONE | —      |
-| N5  | ~~Artifact Store~~            | ✅ DONE | —      |
-| A7  | Auto-version from git tags    | ADJUST  | 1h     |
+| #   | Action                         | Type    | Effort |
+| --- | ------------------------------ | ------- | ------ |
+| A2  | ~~ADK-native Memory Service~~  | ✅ DONE | —      |
+| N3  | ~~Gemini context caching~~     | ✅ DONE | —      |
+| N5  | ~~Artifact Store~~             | ✅ DONE | —      |
+| A7  | ~~Auto-version from git tags~~ | ✅ DONE | —      |

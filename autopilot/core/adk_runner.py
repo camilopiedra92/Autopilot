@@ -41,7 +41,7 @@ from autopilot.agents.context_cache import (
     has_cache_context,
     create_context_cache_config,
 )
-from autopilot.core.session import InMemorySessionService
+from autopilot.core.session import create_session_service
 from autopilot.core.memory import create_memory_service
 from autopilot.core.artifact import create_artifact_service
 from google.genai import types
@@ -67,7 +67,7 @@ class ADKRunner:
     def __init__(self, app_name: str, user_id: str):
         self._app_name = app_name
         self._user_id = user_id
-        self._session_service = InMemorySessionService()
+        self._session_service = create_session_service()
         self._memory_service = create_memory_service()
         self._artifact_service = create_artifact_service()
 
@@ -94,6 +94,7 @@ class ADKRunner:
         *,
         initial_state: dict[str, Any] | None = None,
         stream_session_id: str | None = None,
+        session_id: str | None = None,
     ) -> PipelineResult:
         """
         Run an ADK agent and return a structured result.
@@ -103,15 +104,22 @@ class ADKRunner:
             message: The user message to send to the agent.
             initial_state: Optional initial session state.
             stream_session_id: If provided, used as the SSE event bus session ID.
+            session_id: If provided, reuses this session for conversation continuity.
+                        If the session exists, its history is preserved (multi-turn).
+                        If not, a new session is created with this ID.
 
         Returns:
             PipelineResult with final text, parsed JSON, session state, and timing.
         """
-        session_id = f"pipeline_{uuid4().hex[:12]}"
-        effective_stream_id = stream_session_id or session_id
+        effective_session_id = session_id or f"pipeline_{uuid4().hex[:12]}"
+        effective_stream_id = stream_session_id or effective_session_id
 
         return await self._run_adk_agent(
-            pipeline, message, initial_state, effective_stream_id
+            pipeline,
+            message,
+            initial_state,
+            effective_stream_id,
+            session_id=effective_session_id,
         )
 
     async def _run_adk_agent(
@@ -120,6 +128,8 @@ class ADKRunner:
         message: str,
         initial_state: dict[str, Any] | None,
         effective_stream_id: str,
+        *,
+        session_id: str | None = None,
     ) -> PipelineResult:
         """Execute the ADK agent through Runner + SessionService."""
         with tracer.start_as_current_span(
@@ -129,7 +139,7 @@ class ADKRunner:
                 "agent_name": getattr(pipeline, "name", "unknown"),
             },
         ) as span:
-            session_id = f"pipeline_{uuid4().hex[:12]}"
+            session_id = session_id or f"pipeline_{uuid4().hex[:12]}"
             span.set_attribute("session_id", session_id)
             bus = get_event_bus()
 
@@ -162,13 +172,19 @@ class ADKRunner:
                     artifact_service=self._artifact_service,
                 )
 
-            # Create a fresh session with optional initial state
-            session = await self._session_service.create_session(
+            # Try to resume an existing session (multi-turn), otherwise create new
+            session = await self._session_service.get_session(
                 app_name=self._app_name,
                 user_id=self._user_id,
                 session_id=session_id,
-                state=initial_state or {},
             )
+            if session is None:
+                session = await self._session_service.create_session(
+                    app_name=self._app_name,
+                    user_id=self._user_id,
+                    session_id=session_id,
+                    state=initial_state or {},
+                )
 
             # Build user message
             user_message = types.Content(
