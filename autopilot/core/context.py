@@ -21,7 +21,7 @@ from __future__ import annotations
 import time
 import structlog
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from google.adk.events.event import Event
@@ -34,13 +34,15 @@ from autopilot.core.session import (
 )
 from autopilot.core.memory import (
     BaseMemoryService,
-    SearchMemoryResponse,
     create_memory_service,
 )
 from autopilot.core.artifact import (
     BaseArtifactService,
     create_artifact_service,
 )
+
+if TYPE_CHECKING:
+    from google.adk.memory.base_memory_service import SearchMemoryResponse
 
 
 @dataclass(frozen=False)

@@ -1189,7 +1189,8 @@ class TestSessionStateDict:
 
 from google.adk.events.event import Event
 from google.genai import types as genai_types
-from autopilot.core.memory import SearchMemoryResponse, MemoryEntry
+from google.adk.memory.base_memory_service import SearchMemoryResponse
+from google.adk.memory.memory_entry import MemoryEntry
 
 
 def _make_event(text: str) -> Event:

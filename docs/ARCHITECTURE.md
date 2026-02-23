@@ -13,6 +13,7 @@ We build **World-Class, Edge-First, Agentic Systems**.
 - **Edge-First**: Logic should run as close to the data/user as possible. We use lightweight, efficient patterns without monolithic state.
 - **Agentic**: The system is composed of autonomous, intelligent agents that interact via standard protocols.
 - **Google ADK Alignment**: We strictly follow the Google Agent Development Kit (ADK) patterns.
+  - **ADK Import Policy**: We only re-export types that ADK declares in its public `__all__` (e.g., `BaseMemoryService`, `InMemoryMemoryService`, `BaseArtifactService`). Internal ADK types not in `__all__` (e.g., `SearchMemoryResponse`, `MemoryEntry`, `ArtifactVersion`) are **never** re-exported from `autopilot.core` modules. For type hints, use `TYPE_CHECKING` guards — with `from __future__ import annotations`, all annotations are lazy strings, so no runtime import is needed. Tests may import internal ADK types directly from their canonical module paths.
 
 ## 2. Agent Creation Standards
 
@@ -224,12 +225,9 @@ The platform provides typed, observable primitives for building agentic workflow
 | `Session`                 | ADK Pydantic model — `id`, `app_name`, `user_id`, `state`, `events`              |
 | `BaseMemoryService`       | ADK ABC for long-term memory (re-exported from `google.adk.memory`)              |
 | `InMemoryMemoryService`   | ADK keyword-matching memory (dev/test, default)                                  |
-| `MemoryEntry`             | ADK Pydantic model for a single memory record (content, metadata, timestamp)     |
-| `SearchMemoryResponse`    | ADK response model from `search_memory()` containing `list[MemoryEntry]`         |
 | `BaseArtifactService`     | ADK ABC for versioned artifact storage (re-exported from `google.adk.artifacts`) |
 | `InMemoryArtifactService` | ADK in-memory artifact store (dev/test, default)                                 |
 | `GcsArtifactService`      | Google Cloud Storage artifact store (production, `ARTIFACT_BACKEND=gcs`)         |
-| `ArtifactVersion`         | ADK Pydantic model — `version`, `canonical_uri`, `custom_metadata`, `mime_type`  |
 | `ToolRegistry`            | Centralized tool registry with `@tool` decorator and lazy connector resolution   |
 | `ToolInfo`                | Pydantic metadata model for registered tools (incl. `requires_context`)          |
 | `ToolCallbackManager`     | Before/after lifecycle hooks for tool invocations                                |
@@ -567,7 +565,7 @@ async def run(self, ctx, input):
     # Long-term memory: ADK's event-based API via convenience methods
     await ctx.remember("User prefers dark mode", {"agent": self.name})
     response = await ctx.recall("theme preferences")
-    # response.memories is a list of MemoryEntry objects
+    # response.memories is a list of google.adk.memory.memory_entry.MemoryEntry objects
 ```
 
 **Shared memory across pipeline runs:**
@@ -638,14 +636,11 @@ service = create_artifact_service()
 | `InMemoryMemoryService`     | ADK keyword-matching memory (dev/test, default)                     |
 | `VertexAiMemoryBankService` | Vertex AI Memory Bank (production, `MEMORY_BACKEND=vertexai`)       |
 | `create_memory_service`     | Factory — reads `MEMORY_BACKEND` env var, returns correct backend   |
-| `MemoryEntry`               | ADK Pydantic model for a memory record                              |
-| `SearchMemoryResponse`      | ADK response from `search_memory()` with `list[MemoryEntry]`        |
 | `ctx.remember(text)`        | Convenience → `memory.add_events_to_memory()`                       |
 | `ctx.recall(query)`         | Convenience → `memory.search_memory()` → `SearchMemoryResponse`     |
 | `BaseArtifactService`       | ADK ABC — re-exported from `google.adk.artifacts`                   |
 | `InMemoryArtifactService`   | ADK in-memory artifact store (dev/test, default)                    |
 | `GcsArtifactService`        | GCS artifact store (production, `ARTIFACT_BACKEND=gcs`)             |
-| `ArtifactVersion`           | ADK Pydantic model for versioned artifact metadata                  |
 | `create_artifact_service`   | Factory — reads `ARTIFACT_BACKEND` env var, returns correct backend |
 | `ctx.save_artifact(name,p)` | Convenience → `artifact_service.save_artifact()` → version `int`    |
 | `ctx.load_artifact(name)`   | Convenience → `artifact_service.load_artifact()` → `Part \| None`   |
@@ -1291,7 +1286,7 @@ autopilot/                        # Core platform logic
 │   ├── router.py                 # RouterRunner
 │   ├── orchestrator.py           # OrchestrationStrategy enum
 │   ├── session.py                # ADK re-exports: BaseSessionService, InMemorySessionService, Session
-│   ├── memory.py                 # ADK re-exports: BaseMemoryService, InMemoryMemoryService, MemoryEntry + factory
+│   ├── memory.py                 # ADK re-exports: BaseMemoryService, InMemoryMemoryService + factory
 │   ├── artifact.py               # ADK re-exports: BaseArtifactService, InMemoryArtifactService, GcsArtifactService + factory
 │   ├── context.py                # AgentContext (session, memory, artifacts, tools, bus auto-provisioned)
 │   ├── bus.py                    # V3 Phase 5 — EventBus (EventBusProtocol), AgentMessage, Subscription

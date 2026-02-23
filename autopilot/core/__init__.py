@@ -34,15 +34,12 @@ from autopilot.core.session import (
 from autopilot.core.memory import (
     BaseMemoryService,
     InMemoryMemoryService,
-    MemoryEntry,
-    SearchMemoryResponse,
     create_memory_service,
 )
 from autopilot.core.artifact import (
     BaseArtifactService,
     InMemoryArtifactService,
     GcsArtifactService,
-    ArtifactVersion,
     create_artifact_service,
 )
 from autopilot.core.tools import (
@@ -94,14 +91,11 @@ __all__ = [
     "create_session_service",
     "BaseMemoryService",
     "InMemoryMemoryService",
-    "MemoryEntry",
-    "SearchMemoryResponse",
     "create_memory_service",
     # Artifact Store
     "BaseArtifactService",
     "InMemoryArtifactService",
     "GcsArtifactService",
-    "ArtifactVersion",
     "create_artifact_service",
     # V3 Phase 4 — Tool Ecosystem
     "ToolInfo",

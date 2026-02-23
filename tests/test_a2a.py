@@ -10,6 +10,8 @@ import os
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 
+pytest.importorskip("a2a", reason="a2a-sdk not installed")
+
 os.environ["API_KEY_SECRET"] = "test-secret-123"
 
 from fastapi.testclient import TestClient

@@ -23,13 +23,12 @@ import os
 
 import structlog
 
-# ── ADK Re-exports ────────────────────────────────────────────────────
+# ── ADK Re-exports (public API only) ──────────────────────────────────
 from google.adk.artifacts import (
     BaseArtifactService,
     InMemoryArtifactService,
     GcsArtifactService,
 )
-from google.adk.artifacts.base_artifact_service import ArtifactVersion
 
 logger = structlog.get_logger(__name__)
 
@@ -100,7 +99,6 @@ __all__ = [
     "BaseArtifactService",
     "InMemoryArtifactService",
     "GcsArtifactService",
-    "ArtifactVersion",
     "create_artifact_service",
     "get_artifact_service",
     "reset_artifact_service",

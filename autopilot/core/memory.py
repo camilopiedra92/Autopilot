@@ -20,7 +20,7 @@ import os
 
 import structlog
 
-# ── ADK Re-exports ────────────────────────────────────────────────────
+# ── ADK Re-exports (public API only) ──────────────────────────────────
 from google.adk.memory import BaseMemoryService, InMemoryMemoryService
 
 logger = structlog.get_logger(__name__)

@@ -9,6 +9,10 @@ state delta extraction, state merging, event handling, and factory selection.
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+pytest.importorskip(
+    "google.cloud.firestore", reason="google-cloud-firestore not installed"
+)
+
 from google.adk.sessions.base_session_service import (
     GetSessionConfig,
     ListSessionsResponse,
