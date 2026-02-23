@@ -33,6 +33,7 @@ from typing import Any, Callable, Union
 import structlog
 from opentelemetry import trace
 
+from autopilot.core._artifact_persist import persist_node_artifact
 from autopilot.core.context import AgentContext
 from autopilot.core.agent import BaseAgent, FunctionalAgent, ADKAgent
 
@@ -192,6 +193,16 @@ class Pipeline:
                         "duration_ms": step_elapsed,
                     },
                 )
+
+                # ── Persist step output as a versioned artifact ───────
+                if step_output:
+                    await persist_node_artifact(
+                        ctx,
+                        engine_name=self.name,
+                        node_name=step.name,
+                        output=step_output,
+                        duration_ms=step_elapsed,
+                    )
 
                 # Human-In-The-Loop Pause Check
                 if ctx.state.get("hitl_requested") is True:

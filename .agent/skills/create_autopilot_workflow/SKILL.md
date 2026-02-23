@@ -322,3 +322,4 @@ Just restart the platform — your workflow is live.
 | Hardcode API keys in tool functions                | Use `ToolAuthConfig` + `get_auth_manager()`                              |
 | Skip tool registration for reusable functions      | Use `@tool` decorator with descriptive tags                              |
 | Wrap Connector methods with `@tool`                | Pass as string refs — lazy auto-resolved (`tools=["ynab.get_accounts"]`) |
+| Manually save artifacts in step functions          | Automatic — all engines persist step outputs as versioned JSON artifacts |

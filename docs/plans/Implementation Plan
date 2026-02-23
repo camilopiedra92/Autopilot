@@ -320,8 +320,12 @@ ADK-native versioned artifact storage with 12-Factor factory. Enables cross-run 
 - **Backends**: `InMemoryArtifactService` (dev/test) / `GcsArtifactService` (production via `ARTIFACT_BACKEND=gcs`)
 - **Context methods**: `ctx.save_artifact()`, `ctx.load_artifact(run_id=)`, `ctx.list_artifacts()`
 - **ADK-native types**: `types.Part` only — zero custom wrapping
+- **Automatic persistence**: All three engines (`Pipeline`, `DAGRunner`, `ADKRunner`) persist artifacts after each step/node/LLM call — zero modifications to individual steps
+- **Shared utility**: `Pipeline` and `DAGRunner` share `persist_node_artifact()` (`autopilot/core/_artifact_persist.py`); `ADKRunner` uses `_persist_llm_artifact()` for LLM-specific data
+- **Consistent namespace**: All components use `user_id="default"` — all artifacts for a given execution land under `{app_name}/default/{execution_id}/`
+- **Two artifact layers**: `.json` (structured node output) + `.llm.json` (raw LLM response)
 
-Files: `autopilot/core/artifact.py` (new), `autopilot/core/context.py`, `autopilot/core/adk_runner.py`, `autopilot/core/__init__.py`, `autopilot/errors.py` (`ArtifactServiceError`), `ARCHITECTURE.md` updated.
+Files: `autopilot/core/artifact.py`, `autopilot/core/_artifact_persist.py` (new), `autopilot/core/pipeline.py`, `autopilot/core/dag.py`, `autopilot/core/adk_runner.py`, `autopilot/core/context.py`, `autopilot/core/__init__.py`, `autopilot/errors.py` (`ArtifactServiceError`), `ARCHITECTURE.md` updated.
 
 ---
 

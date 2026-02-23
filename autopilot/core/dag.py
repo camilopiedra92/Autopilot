@@ -37,6 +37,7 @@ from typing import Any
 
 import structlog
 
+from autopilot.core._artifact_persist import persist_node_artifact
 from autopilot.core.agent import BaseAgent
 from autopilot.core.context import AgentContext
 from autopilot.core.pipeline import PipelineExecutionResult, _wrap_step, StepLike
@@ -72,6 +73,10 @@ class DAGRunner:
     have their dependencies satisfied and execute concurrently via
     ``asyncio.gather``.  Results are merged into a shared state dict
     that subsequent layers can read from.
+
+    After each node completes, its output is automatically persisted as
+    a versioned JSON artifact (``{node_name}.json``) in the configured
+    artifact store (InMemory for dev, GCS for production).
 
     This class is not constructed directly — use ``DAGBuilder.build()``.
     """
@@ -229,6 +234,16 @@ class DAGRunner:
                 "duration_ms": elapsed,
             },
         )
+
+        # ── Persist node output as a versioned artifact ───────────────
+        if output:
+            await persist_node_artifact(
+                ctx,
+                engine_name=self.name,
+                node_name=node_name,
+                output=output,
+                duration_ms=elapsed,
+            )
 
     def __repr__(self) -> str:
         layers_str = " → ".join(f"[{', '.join(layer)}]" for layer in self._layers)

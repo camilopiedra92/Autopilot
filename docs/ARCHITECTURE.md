@@ -202,49 +202,49 @@ agent = create_platform_agent(
 
 The platform provides typed, observable primitives for building agentic workflows:
 
-| Primitive                 | Purpose                                                                          |
-| ------------------------- | -------------------------------------------------------------------------------- |
-| `AgentContext`            | Execution context (logger, events, state, session, memory, tools)                |
-| `BaseAgent[In, Out]`      | Strictly typed agent contract with `invoke()` lifecycle                          |
-| `FunctionalAgent`         | Auto-wraps plain Python functions as agents                                      |
-| `ADKAgent`                | Bridges Google ADK `LlmAgent` into the platform contract (state-priority output) |
-| `ADKRunner`               | Executes native ADK agents via `Runner` + `SessionService` with retry/tracing    |
-| `SequentialAgentAdapter`  | Runs child agents in sequence, accumulating state (ADK `SequentialAgent`)        |
-| `LoopAgentAdapter`        | Retries a body agent until exit condition met (ADK `LoopAgent`)                  |
-| `ParallelAgentAdapter`    | Runs branches concurrently via `asyncio.gather` (ADK `ParallelAgent`)            |
-| `FallbackAgentAdapter`    | Retries a primary agent, falling back to a secondary on error                    |
-| `PipelineBuilder`         | Fluent API: `.step()`, `.loop()`, `.parallel()`                                  |
-| `Pipeline`                | Sequential execution engine with full observability and HITL support             |
-| `DAGBuilder`              | Fluent API for directed acyclic graph construction                               |
-| `DAGRunner`               | Topological parallel execution engine                                            |
-| `ReactRunner`             | Agentic Reason-Act-Observe orchestration loop                                    |
-| `RouterRunner`            | Semantic routing to sub-workflows based on intent                                |
-| `OrchestrationStrategy`   | Enum: `SEQUENTIAL`, `DAG`, `REACT`, `ROUTER`                                     |
-| `BaseSessionService`      | ADK-native ABC — re-exported from `google.adk.sessions` (create/get/list/delete) |
-| `InMemorySessionService`  | ADK-native dict-backed session (auto-provisioned in `AgentContext`)              |
-| `Session`                 | ADK Pydantic model — `id`, `app_name`, `user_id`, `state`, `events`              |
-| `BaseMemoryService`       | ADK ABC for long-term memory (re-exported from `google.adk.memory`)              |
-| `InMemoryMemoryService`   | ADK keyword-matching memory (dev/test, default)                                  |
-| `BaseArtifactService`     | ADK ABC for versioned artifact storage (re-exported from `google.adk.artifacts`) |
-| `InMemoryArtifactService` | ADK in-memory artifact store (dev/test, default)                                 |
-| `GcsArtifactService`      | Google Cloud Storage artifact store (production, `ARTIFACT_BACKEND=gcs`)         |
-| `ToolRegistry`            | Centralized tool registry with `@tool` decorator and lazy connector resolution   |
-| `ToolInfo`                | Pydantic metadata model for registered tools (incl. `requires_context`)          |
-| `ToolCallbackManager`     | Before/after lifecycle hooks for tool invocations                                |
-| `ToolAuthConfig`          | Declarative per-tool credential configuration                                    |
-| `ToolAuthManager`         | Credential store: resolution (cache→state→env), request/provide flows            |
-| `LongRunningTool`         | Wrapper for async operations → ADK `LongRunningFunctionTool`                     |
-| `OperationTracker`        | Lifecycle tracking for long-running tool operations                              |
-| `MCPBridge`               | Platform wrapper for connecting to external MCP servers                          |
-| `MCPRegistry`             | Multi-MCP-server lifecycle management                                            |
-| `EventBus`                | Unified pub/sub message bus with middleware chain and replay (A2A)               |
-| `AgentMessage`            | Pydantic envelope: topic, sender, payload, correlation_id                        |
-| `Subscription`            | Opaque handle for unsubscribing from the bus                                     |
-| `DSLWorkflowDef`          | Pydantic schema for declarative YAML workflow definitions                        |
-| `DSLStepDef`              | Schema for a single step (function, agent, loop, parallel, sequential)           |
-| `DSLNodeDef`              | Schema for a DAG node with explicit dependencies                                 |
-| `load_workflow(path)`     | Reads YAML → validates → resolves refs → returns `Pipeline` or `DAGRunner`       |
-| `load_workflow_from_dict` | Same as above but from a pre-parsed dict (useful in tests)                       |
+| Primitive                 | Purpose                                                                                            |
+| ------------------------- | -------------------------------------------------------------------------------------------------- |
+| `AgentContext`            | Execution context (logger, events, state, session, memory, tools)                                  |
+| `BaseAgent[In, Out]`      | Strictly typed agent contract with `invoke()` lifecycle                                            |
+| `FunctionalAgent`         | Auto-wraps plain Python functions as agents                                                        |
+| `ADKAgent`                | Bridges Google ADK `LlmAgent` into the platform contract (state-priority output)                   |
+| `ADKRunner`               | Executes native ADK agents via `Runner` + `SessionService` with retry/tracing/artifact persistence |
+| `SequentialAgentAdapter`  | Runs child agents in sequence, accumulating state (ADK `SequentialAgent`)                          |
+| `LoopAgentAdapter`        | Retries a body agent until exit condition met (ADK `LoopAgent`)                                    |
+| `ParallelAgentAdapter`    | Runs branches concurrently via `asyncio.gather` (ADK `ParallelAgent`)                              |
+| `FallbackAgentAdapter`    | Retries a primary agent, falling back to a secondary on error                                      |
+| `PipelineBuilder`         | Fluent API: `.step()`, `.loop()`, `.parallel()`                                                    |
+| `Pipeline`                | Sequential execution engine with full observability and HITL support                               |
+| `DAGBuilder`              | Fluent API for directed acyclic graph construction                                                 |
+| `DAGRunner`               | Topological parallel execution engine with automatic artifact persistence                          |
+| `ReactRunner`             | Agentic Reason-Act-Observe orchestration loop                                                      |
+| `RouterRunner`            | Semantic routing to sub-workflows based on intent                                                  |
+| `OrchestrationStrategy`   | Enum: `SEQUENTIAL`, `DAG`, `REACT`, `ROUTER`                                                       |
+| `BaseSessionService`      | ADK-native ABC — re-exported from `google.adk.sessions` (create/get/list/delete)                   |
+| `InMemorySessionService`  | ADK-native dict-backed session (auto-provisioned in `AgentContext`)                                |
+| `Session`                 | ADK Pydantic model — `id`, `app_name`, `user_id`, `state`, `events`                                |
+| `BaseMemoryService`       | ADK ABC for long-term memory (re-exported from `google.adk.memory`)                                |
+| `InMemoryMemoryService`   | ADK keyword-matching memory (dev/test, default)                                                    |
+| `BaseArtifactService`     | ADK ABC for versioned artifact storage (re-exported from `google.adk.artifacts`)                   |
+| `InMemoryArtifactService` | ADK in-memory artifact store (dev/test, default)                                                   |
+| `GcsArtifactService`      | Google Cloud Storage artifact store (production, `ARTIFACT_BACKEND=gcs`)                           |
+| `ToolRegistry`            | Centralized tool registry with `@tool` decorator and lazy connector resolution                     |
+| `ToolInfo`                | Pydantic metadata model for registered tools (incl. `requires_context`)                            |
+| `ToolCallbackManager`     | Before/after lifecycle hooks for tool invocations                                                  |
+| `ToolAuthConfig`          | Declarative per-tool credential configuration                                                      |
+| `ToolAuthManager`         | Credential store: resolution (cache→state→env), request/provide flows                              |
+| `LongRunningTool`         | Wrapper for async operations → ADK `LongRunningFunctionTool`                                       |
+| `OperationTracker`        | Lifecycle tracking for long-running tool operations                                                |
+| `MCPBridge`               | Platform wrapper for connecting to external MCP servers                                            |
+| `MCPRegistry`             | Multi-MCP-server lifecycle management                                                              |
+| `EventBus`                | Unified pub/sub message bus with middleware chain and replay (A2A)                                 |
+| `AgentMessage`            | Pydantic envelope: topic, sender, payload, correlation_id                                          |
+| `Subscription`            | Opaque handle for unsubscribing from the bus                                                       |
+| `DSLWorkflowDef`          | Pydantic schema for declarative YAML workflow definitions                                          |
+| `DSLStepDef`              | Schema for a single step (function, agent, loop, parallel, sequential)                             |
+| `DSLNodeDef`              | Schema for a DAG node with explicit dependencies                                                   |
+| `load_workflow(path)`     | Reads YAML → validates → resolves refs → returns `Pipeline` or `DAGRunner`                         |
+| `load_workflow_from_dict` | Same as above but from a pre-parsed dict (useful in tests)                                         |
 
 ### ADKAgent Output Extraction & Structured Output Enforcement
 
@@ -425,6 +425,7 @@ result = await dag.execute(ctx, initial_input={...})
 - **Layer-based parallelism** — nodes without mutual dependencies run concurrently via `asyncio.gather`
 - **Build-time validation** — detects cycles (`DAGCycleError`), dangling deps (`DAGDependencyError`), and duplicates before execution
 - **Auto-wrapping** — plain functions and ADK agents are wrapped into `BaseAgent`, same as `PipelineBuilder`
+- **Automatic artifact persistence** — each node's output is saved as `{node_name}.json` after completion (see §4.1)
 
 **Execution model (diamond DAG example):**
 
@@ -622,6 +623,67 @@ from autopilot.core.artifact import create_artifact_service
 # Singleton — reads ARTIFACT_BACKEND env var (default: "memory")
 service = create_artifact_service()
 ```
+
+#### Automatic Artifact Persistence (Universal)
+
+All three execution engines automatically persist step/node outputs as versioned JSON artifacts after each completion. This is centralized — individual pipeline steps and agents require **zero modification**.
+
+| Engine      | Artifact saved                       | Extension          | What it captures                            |
+| ----------- | ------------------------------------ | ------------------ | ------------------------------------------- |
+| `Pipeline`  | After each sequential step completes | `{step}.json`      | Node metadata + structured output dict      |
+| `DAGRunner` | After each DAG node completes        | `{node}.json`      | Node metadata + structured output dict      |
+| `ADKRunner` | After each LLM agent call completes  | `{agent}.llm.json` | LLM metadata + `final_text` + `parsed_json` |
+
+**Design principles:**
+
+- **Fire-and-forget** — artifact save failures are logged (`artifact_persist_failed`) but **never** block pipeline execution
+- **DRY** — `Pipeline` and `DAGRunner` share a common `persist_node_artifact()` utility (`autopilot/core/_artifact_persist.py`); `ADKRunner` uses its own `_persist_llm_artifact()` to capture LLM-specific data
+- **JSON-safe serialization** — handles Pydantic models (`.model_dump()`), datetimes (`.isoformat()`), and arbitrary objects (`str()` fallback)
+- **Consistent namespace** — all artifacts use `user_id="default"` so every artifact for a given execution lands under a single path
+
+**GCS path structure (production):**
+
+```
+gs://{ARTIFACT_GCS_BUCKET}/{app_name}/default/{execution_id}/
+├── format_parser_prompt.json          ← Pipeline/DAG node output
+├── email_parser.json                  ← Pipeline/DAG node output
+├── email_parser.llm.json              ← ADKRunner LLM response
+├── researcher.json                    ← Pipeline/DAG node output
+├── researcher.llm.json                ← ADKRunner LLM response
+├── categorizer.json                   ← Pipeline/DAG node output
+├── categorizer.llm.json               ← ADKRunner LLM response
+├── synthesize_transaction.json        ← Pipeline/DAG node output
+└── push_to_ynab.json                  ← Pipeline/DAG node output
+```
+
+**Artifact envelope format (`.json` — Pipeline/DAG):**
+
+```json
+{
+  "node": "email_parser",
+  "engine": "bank_to_ynab",
+  "execution_id": "da484586eb1443ed",
+  "pipeline": "bank_to_ynab",
+  "duration_ms": 5668.35,
+  "output": { "parsed_email": { "date": "2026-02-21", ... } }
+}
+```
+
+**Artifact envelope format (`.llm.json` — ADKRunner):**
+
+```json
+{
+  "agent": "email_parser",
+  "app_name": "bank_to_ynab",
+  "session_id": "pipeline_12de18656d94",
+  "duration_ms": 4759.52,
+  "final_text": "{\"date\":\"2026-02-21\", ...}",
+  "parsed_json": { "date": "2026-02-21", ... }
+}
+```
+
+> [!NOTE]
+> The two artifact layers are complementary: `.json` captures the **structured output** after the platform processes it (state merging, type conversion); `.llm.json` captures the **raw LLM response** before any processing. Together they provide a complete audit trail for debugging, replay, and cost analysis.
 
 | Component                   | Purpose                                                             |
 | --------------------------- | ------------------------------------------------------------------- |

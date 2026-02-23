@@ -27,6 +27,7 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import time
 import structlog
 from typing import Any
@@ -265,13 +266,23 @@ class ADKRunner:
                 sender="adk_runner",
             )
 
-            return PipelineResult(
+            pipeline_result = PipelineResult(
                 session_id=session_id,
                 final_text=final_text,
                 parsed_json=parsed_json,
                 state=final_state,
                 duration_ms=elapsed_ms,
             )
+
+            # ── Persist LLM result as a versioned artifact ────────────
+            await self._persist_llm_artifact(
+                agent_name=getattr(pipeline, "name", "unknown"),
+                session_id=session_id,
+                stream_session_id=effective_stream_id,
+                result=pipeline_result,
+            )
+
+            return pipeline_result
 
         except Exception as e:
             span.record_exception(e)
@@ -290,6 +301,51 @@ class ADKRunner:
             # Reset pipeline context
             pipeline_session_id.reset(token)
 
+    async def _persist_llm_artifact(
+        self,
+        agent_name: str,
+        session_id: str,
+        stream_session_id: str,
+        result: PipelineResult,
+    ) -> None:
+        """Persist an LLM agent's result as a versioned artifact.
+
+        Saves ``{agent_name}.llm.json`` scoped to the execution via
+        stream_session_id. Never blocks — failures are logged and swallowed.
+        """
+        try:
+            payload = {
+                "agent": agent_name,
+                "app_name": self._app_name,
+                "session_id": session_id,
+                "duration_ms": result.duration_ms,
+                "final_text": result.final_text,
+                "parsed_json": result.parsed_json,
+            }
+            artifact = types.Part(
+                text=json.dumps(payload, ensure_ascii=False, default=str)
+            )
+            version = await self._artifact_service.save_artifact(
+                app_name=self._app_name,
+                user_id="default",
+                session_id=stream_session_id,
+                filename=f"{agent_name}.llm.json",
+                artifact=artifact,
+            )
+            logger.debug(
+                "llm_artifact_persisted",
+                agent=agent_name,
+                filename=f"{agent_name}.llm.json",
+                version=version,
+                session_id=stream_session_id,
+            )
+        except Exception as exc:
+            logger.warning(
+                "llm_artifact_persist_failed",
+                agent=agent_name,
+                error=str(exc),
+            )
+
 
 # ── Singleton ─────────────────────────────────────────────────────────
 
@@ -298,7 +354,7 @@ _runners: dict[str, ADKRunner] = {}
 
 def get_adk_runner(
     app_name: str = "autopilot",
-    user_id: str = "default_user",
+    user_id: str = "default",
 ) -> ADKRunner:
     """
     Get or create an ADKRunner singleton for the given app_name.
