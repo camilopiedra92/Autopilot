@@ -91,10 +91,10 @@ class TestAgentCreation:
         assert "Todoist" in ASSISTANT_INSTRUCTION
         assert "YNAB" in ASSISTANT_INSTRUCTION
         assert "Telegram" in ASSISTANT_INSTRUCTION
-        assert "DETENTE" in ASSISTANT_INSTRUCTION
+        assert "NUNCA" in ASSISTANT_INSTRUCTION
 
-        # Must have the chat_id placeholder
-        assert "{telegram_chat_id}" in ASSISTANT_INSTRUCTION
+        # Must reference the new LLM-friendly create_task_simple tool
+        assert "todoist_create_task_simple" in ASSISTANT_INSTRUCTION
 
 
 # ── Event Subscription Tests ─────────────────────────────────────────

@@ -225,6 +225,52 @@ class AsyncTodoistClient:
         logger.info("todoist_task_created", task_id=data.get("id"))
         return data
 
+    async def create_task_simple(
+        self,
+        content: str,
+        due_string: str | None = None,
+        priority: int = 1,
+        project_id: str | None = None,
+        description: str | None = None,
+    ) -> str:
+        """
+        Create a new task in Todoist with explicit parameters.
+
+        This is the preferred method for AI agents — each parameter is named
+        and typed, so the LLM can intuitively fill them from user requests.
+
+        Args:
+            content: The task title (e.g. "Comprar leche", "Call dentist").
+            due_string: Natural language due date (e.g. "today", "tomorrow",
+                "next monday", "Feb 25"). Optional — omit for no due date.
+            priority: Priority level 1-4 where 1=normal, 4=urgent. Default is 1.
+            project_id: UUID of the target project. Optional — defaults to Inbox.
+            description: Additional notes for the task body. Optional.
+
+        Returns:
+            A confirmation string with the created task details.
+        """
+        payload: dict = {"content": content}
+        if due_string:
+            payload["due_string"] = due_string
+        if priority and priority != 1:
+            payload["priority"] = priority
+        if project_id:
+            payload["project_id"] = project_id
+        if description:
+            payload["description"] = description
+
+        data = await self.create_task(payload)
+        task_id = data.get("id", "unknown")
+        due_info = data.get("due", {})
+        due_display = (
+            due_info.get("string", "no due date") if due_info else "no due date"
+        )
+        return (
+            f"Task created successfully: '{content}' "
+            f"(ID: {task_id}, due: {due_display}, priority: {priority})"
+        )
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=30),

@@ -269,11 +269,15 @@ This path is **lossless** — no regex parsing, no text extraction, no function 
 For agents that produce free-text output:
 
 1. `ADKRunner` extracts `final_text` from the event stream
-2. `extract_json(final_text)` attempts regex-based JSON extraction as a **last-resort fallback**
-3. `ADKAgent.run()` returns `result.parsed_json` or `{"output": result.final_text}`
+2. If `final_text` is empty (common for **ReAct agents** that respond entirely via tool calls, e.g., sending a Telegram message), the runner sets `final_text = "[Agent completed via tool calls]"` instead of raising `PipelineEmptyResponseError`. This prevents spurious retries and duplicate side-effects.
+3. `extract_json(final_text)` attempts regex-based JSON extraction as a **last-resort fallback**
+4. `ADKAgent.run()` returns `result.parsed_json` or `{"output": result.final_text}`
 
 > [!WARNING]
 > The schemaless path uses regex-based JSON extraction (`json_utils.extract_json()`) which is inherently fragile. **Always prefer `output_schema`** for agents that produce structured data. Reserve the schemaless path only for agents that genuinely produce free-text output.
+
+> [!NOTE]
+> `PipelineEmptyResponseError` is only raised for agents with `output_schema` set (which MUST produce structured JSON text). Schemaless ReAct agents are expected to complete their work via tool calls without necessarily emitting a final text response.
 
 ### Connector Bridge Wrapper Annotations
 
@@ -371,22 +375,23 @@ Layer 8: [publish_transaction_event]
 
 ### Conversational Assistant (conversational_assistant — Production)
 
-The `conversational_assistant` workflow uses a **single `ADKAgent` invocation** — no pipeline or DAG needed. The agent autonomously calls tools and replies within one ADK session:
+The `conversational_assistant` workflow uses a **single `ADKAgent` invocation** — no pipeline or DAG needed. The agent autonomously calls tools and replies within one ADK session.
+
+**Event-driven trigger**: The platform-level Telegram webhook adapter publishes `telegram.message_received` to the EventBus. The workflow subscribes in `setup()` (same pattern as `bank_to_ynab` → `email.received`):
 
 ```python
-from autopilot.core.agent import ADKAgent
-from autopilot.core.context import AgentContext
+class ConversationalAssistantWorkflow(BaseWorkflow):
+    async def setup(self):
+        registry = get_subscriber_registry()
+        registry.register("telegram.message_received", self._on_telegram_message,
+                          name="conversational_assistant_telegram")
 
-adk_agent = create_assistant()  # 9 tools: Telegram, Todoist, YNAB
-adk_agent.instruction = adk_agent.instruction.format(telegram_chat_id=chat_id)
-agent = ADKAgent(adk_agent)
-
-ctx = AgentContext(
-    pipeline_name="conversational_assistant",
-    metadata={"session_id": f"telegram_{chat_id}"},  # Multi-turn session
-)
-
-result = await agent.invoke(ctx, {"message": user_message})
+    async def _on_telegram_message(self, msg):
+        payload = msg.payload if hasattr(msg, "payload") else msg
+        await self.run(TriggerType.WEBHOOK, {
+            "message": payload["message"],
+            "telegram_chat_id": payload["telegram_chat_id"],
+        })
 ```
 
 **Multi-turn conversation**: The `session_id` is derived from the Telegram `chat_id`, so the same user always gets the same ADK session. The `ADKRunner` uses a **get-or-create** pattern (aligned with [ADK official docs](https://google.github.io/adk-docs/streaming/dev-guide/part1)) to resume existing sessions:
@@ -1107,10 +1112,13 @@ Pub/Sub Push → webhook (thin adapter)
           ▼               ▼ (future workflows)
     bank_to_ynab     expense_auditor
 
-  POST /telegram/webhook
-          │
-          ▼
-  conversational_assistant (ADKAgent — multi-turn)
+Telegram → webhook (thin adapter)
+                  │
+                  ▼
+          bus.publish("telegram.message_received", payload)
+                  │
+                  ▼
+    conversational_assistant (ADKAgent — multi-turn)
           │
           ▼
     bus.publish("transaction.created")
@@ -1122,7 +1130,8 @@ Pub/Sub Push → webhook (thin adapter)
 **Webhook adapter** (publishes events, never calls workflows directly):
 
 ```python
-# autopilot/api/webhooks.py
+# autopilot/api/webhooks.py — ALL webhooks live here (thin event adapters)
+
 @router.post("/gmail/webhook")
 async def gmail_push_webhook(request: Request):
     emails = await pubsub.handle_notification(pubsub_message)
@@ -1132,11 +1141,25 @@ async def gmail_push_webhook(request: Request):
             "email_id": email.get("id", ""),
             "sender": email.get("from", ""),
             "body": email.get("body", ""),
-            "label_ids": email.get("labelIds", []),
-            "email": email,  # Full payload for workflows
+            "email": email,
         }, sender="gmail_webhook")
     return {"status": "ok", "emails_published": len(emails)}
+
+@router.post("/telegram/webhook")
+async def telegram_webhook(request: Request):
+    update = await request.json()
+    # ... validate secret token, extract message, verify authorized chat ...
+    bus = get_event_bus()
+    await bus.publish("telegram.message_received", {
+        "message": text,
+        "telegram_chat_id": chat_id,
+        "update": update,
+    }, sender="telegram_webhook")
+    return {"status": "ok", "event": "telegram.message_received"}
 ```
+
+> [!CAUTION]
+> **NEVER** define HTTP endpoints inside workflow code (`register_routes`). Webhooks are **always** platform-level thin adapters in `webhooks.py`. Workflows subscribe to events via `setup()`. See `.agent/rules/event_driven_webhooks.md`.
 
 **Workflow subscribes and self-matches** via `BaseWorkflow._matches_gmail_trigger()`:
 
@@ -1651,7 +1674,7 @@ Use the **Connector Pattern** for external integrations.
 - Do not implement raw API clients inside agents.
 - Use `autopilot.connectors` to abstract 3rd party services. Current supported integrations:
   - **YNAB**: `ynab.get_accounts`, `ynab.create_transaction`, etc.
-  - **Todoist**: `todoist.get_projects`, `todoist.create_task`, `todoist.get_comments`, etc.
+  - **Todoist**: `todoist.get_projects`, `todoist.create_task`, `todoist.create_task_simple` (LLM-friendly), `todoist.get_comments`, etc.
   - **Gmail**: (via Google ADK natively or custom wrappers)
   - **Telegram**: `telegram.send_message`, `telegram.send_photo`, `telegram.set_webhook`, etc.
 - **NEVER** wrap a connector method with `@tool` inside a workflow. Use the platform's auto-discovered `connector.method_name` tools directly via the ToolRegistry to prevent double implementations.

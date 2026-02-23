@@ -13,12 +13,6 @@ input_schema:
   required:
     - message
     - telegram_chat_id
-output_schema:
-  type: object
-  properties:
-    response:
-      type: string
-      description: "Confirmation of what was done"
-    react_finished:
-      type: boolean
-      description: "Whether the agent has completed its task"
+# No output_schema — this is a ReAct agent that responds via tool calls
+# (telegram.send_message_string), not structured JSON output.
+

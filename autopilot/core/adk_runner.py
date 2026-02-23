@@ -233,18 +233,33 @@ class ADKRunner:
             elapsed_ms = round((time.monotonic() - start) * 1000, 2)
 
             if not final_text:
-                await bus.publish(
-                    "pipeline.error",
-                    {
-                        "error": "Pipeline returned no final response.",
-                        "session_id": session_id,
-                    },
-                    sender="adk_runner",
-                )
-                raise PipelineEmptyResponseError(
-                    "Pipeline returned no final response.",
-                    detail=f"agent={getattr(pipeline, 'name', 'unknown')}, session={session_id}",
-                )
+                # ReAct agents (like conversational_assistant) may complete
+                # their work entirely via tool calls (e.g. sending a Telegram
+                # message, creating a Todoist task) without emitting a final
+                # text response.  Only raise for agents with output_schema,
+                # which MUST produce structured JSON text.
+                has_output_schema = getattr(pipeline, "output_schema", None) is not None
+                if has_output_schema:
+                    await bus.publish(
+                        "pipeline.error",
+                        {
+                            "error": "Pipeline returned no final response.",
+                            "session_id": session_id,
+                        },
+                        sender="adk_runner",
+                    )
+                    raise PipelineEmptyResponseError(
+                        "Pipeline returned no final response.",
+                        detail=f"agent={getattr(pipeline, 'name', 'unknown')}, session={session_id}",
+                    )
+                else:
+                    final_text = "[Agent completed via tool calls]"
+                    logger.info(
+                        "adk_runner_no_final_text",
+                        agent_name=getattr(pipeline, "name", "unknown"),
+                        session_id=session_id,
+                        reason="ReAct agent completed via tool calls without text response",
+                    )
 
             # Extract JSON with robust fallback
             try:

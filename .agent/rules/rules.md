@@ -29,8 +29,9 @@
 - **ALWAYS** use `ToolAuthConfig` + `get_auth_manager()` for tool credentials — **NEVER** hardcode API keys.
 - **ALWAYS** add `tool_context: ToolContext` parameter when a tool needs access to session state, memory, or auth.
 - **ALWAYS** use `@long_running_tool` for operations that need async/batch processing or human approval.
-- Use `get_callback_manager()` to register lifecycle hooks (rate limits, audit logs, auth checks) at the platform level.
+- **ALWAYS** use `get_callback_manager()` to register lifecycle hooks (rate limits, audit logs, auth checks) at the platform level.
 - **ALWAYS** set `output_key` on LLM agents to leverage ADK session state for structured output. When the agent produces structured data, **ALWAYS** also set `output_schema` (Pydantic model) — this activates Gemini native JSON mode (`response_schema` + `response_mime_type=application/json`) and auto-disables agent transfers for full isolation. Never rely on fragile text parsing as the primary output path.
+- **PREFER** LLM-friendly tool signatures with explicit named parameters over opaque `dict` parameters. When a connector method takes a single `dict` (e.g., `create_task(payload: dict)`), create an `_simple` wrapper with explicit args (e.g., `create_task_simple(content, due_string, priority)`) and use that in agent tool lists. LLMs cannot infer dict schema from a `dict` type hint.
 
 ## 4. Declarative Pipelines (DSL)
 
