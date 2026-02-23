@@ -119,7 +119,7 @@ class ConversationalAssistantWorkflow(BaseWorkflow):
         )
         # Put chat_id in state so the InstructionProvider resolves
         # {telegram_chat_id} from ReadonlyContext.state — the ADK-native way.
-        ctx.update({"telegram_chat_id": chat_id})
+        ctx.update_state({"telegram_chat_id": chat_id})
 
         try:
             result = await agent.invoke(

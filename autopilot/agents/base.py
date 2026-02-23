@@ -49,6 +49,19 @@ _MONTHS_ES = [
 ]
 
 
+class _SafeFormatMap(dict):
+    """Dict subclass for ``str.format_map()`` that preserves missing keys.
+
+    ``defaultdict(str)`` would replace ``{missing}`` with ``""``, breaking
+    instruction placeholders that haven't been set in the session state yet.
+    This class returns ``"{key}"`` for any missing key, keeping unresolved
+    placeholders intact for later resolution.
+    """
+
+    def __missing__(self, key: str) -> str:
+        return "{" + key + "}"
+
+
 def _with_temporal_context(
     instruction: str,
 ) -> Callable:
@@ -69,7 +82,6 @@ def _with_temporal_context(
     """
     import datetime
     import zoneinfo
-    from collections import defaultdict
 
     _tz = zoneinfo.ZoneInfo("America/Bogota")
 
@@ -82,13 +94,17 @@ def _with_temporal_context(
         )
         base = f"[Fecha y hora actual: {dt}]\n\n{instruction}"
 
-        # Resolve {key} placeholders from session state, just like ADK does
-        # for plain string instructions.  Unknown keys are left as-is.
+        # Resolve {key} placeholders from session state.
+        #
+        # ADK disables its native state injection for callable instructions
+        # (see: https://google.github.io/adk-docs/sessions/state).
+        # We replicate the same behavior here so workflows can use
+        # {key} placeholders in instructions alongside the dynamic datetime.
+        # ReadonlyContext.state → MappingProxyType(session.state).
         if ctx is not None and hasattr(ctx, "state"):
-            state = ctx.state if callable(ctx.state) else ctx.state
+            state = ctx.state  # property → MappingProxyType[str, Any]
             if hasattr(state, "get"):
-                # defaultdict returns "{key}" for missing keys → safe substitution
-                safe = defaultdict(str, state)
+                safe = _SafeFormatMap(state)
                 try:
                     base = base.format_map(safe)
                 except (KeyError, ValueError, IndexError):
