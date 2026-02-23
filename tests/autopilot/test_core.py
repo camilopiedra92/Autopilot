@@ -1686,3 +1686,112 @@ class TestStructuredOutputEnforcement:
         assert "12345" in result
         assert "{user_name}" not in result
         assert "{chat_id}" not in result
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  Context Window Compression Tests
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+class TestContextWindowCompression:
+    """Tests for _create_run_config() factory in adk_runner."""
+
+    def test_default_run_config(self):
+        """Default RunConfig should have SlidingWindow with defaults."""
+        from autopilot.core.adk_runner import _create_run_config
+
+        config = _create_run_config()
+        assert config is not None
+
+        cwc = config.context_window_compression
+        assert cwc is not None
+        assert cwc.trigger_tokens == 100_000
+        assert cwc.sliding_window is not None
+        assert cwc.sliding_window.target_tokens == 80_000
+
+    def test_custom_env_vars(self, monkeypatch):
+        """RunConfig should read custom thresholds from env vars."""
+        from autopilot.core.adk_runner import _create_run_config
+
+        monkeypatch.setenv("CONTEXT_COMPRESSION_TRIGGER_TOKENS", "50000")
+        monkeypatch.setenv("CONTEXT_COMPRESSION_TARGET_TOKENS", "30000")
+
+        config = _create_run_config()
+        assert config is not None
+        assert config.context_window_compression.trigger_tokens == 50_000
+        assert config.context_window_compression.sliding_window.target_tokens == 30_000
+
+    def test_disabled_when_both_zero(self, monkeypatch):
+        """When both thresholds are 0, RunConfig should be None."""
+        from autopilot.core.adk_runner import _create_run_config
+
+        monkeypatch.setenv("CONTEXT_COMPRESSION_TRIGGER_TOKENS", "0")
+        monkeypatch.setenv("CONTEXT_COMPRESSION_TARGET_TOKENS", "0")
+
+        config = _create_run_config()
+        assert config is None
+
+    def test_run_config_is_valid_adk_type(self):
+        """RunConfig should be an instance of ADK's RunConfig."""
+        from autopilot.core.adk_runner import _create_run_config
+        from google.adk.agents.run_config import RunConfig
+
+        config = _create_run_config()
+        assert isinstance(config, RunConfig)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  Memory Transfer Tests
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+class TestMemoryTransfer:
+    """Tests for ADKRunner._transfer_session_to_memory."""
+
+    @pytest.mark.asyncio
+    async def test_transfer_calls_add_session_to_memory(self):
+        """Successful transfer should call add_session_to_memory."""
+        from unittest.mock import AsyncMock
+        from autopilot.core.adk_runner import ADKRunner
+
+        runner = ADKRunner.__new__(ADKRunner)
+        runner._memory_service = AsyncMock()
+
+        mock_session = MagicMock()
+        mock_session.id = "test_session"
+        mock_session.events = [MagicMock(), MagicMock()]
+
+        await runner._transfer_session_to_memory(mock_session)
+
+        runner._memory_service.add_session_to_memory.assert_called_once_with(
+            mock_session
+        )
+
+    @pytest.mark.asyncio
+    async def test_transfer_swallows_errors(self):
+        """Transfer failure should be swallowed (fire-and-forget)."""
+        from unittest.mock import AsyncMock
+        from autopilot.core.adk_runner import ADKRunner
+
+        runner = ADKRunner.__new__(ADKRunner)
+        runner._memory_service = AsyncMock()
+        runner._memory_service.add_session_to_memory.side_effect = RuntimeError("boom")
+
+        mock_session = MagicMock()
+        mock_session.id = "test_session"
+        mock_session.events = []
+
+        # Should NOT raise
+        await runner._transfer_session_to_memory(mock_session)
+
+    @pytest.mark.asyncio
+    async def test_transfer_skips_when_no_memory_service(self):
+        """No-op when memory_service is None."""
+        from autopilot.core.adk_runner import ADKRunner
+
+        runner = ADKRunner.__new__(ADKRunner)
+        runner._memory_service = None
+
+        mock_session = MagicMock()
+        # Should NOT raise
+        await runner._transfer_session_to_memory(mock_session)

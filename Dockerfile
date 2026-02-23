@@ -77,6 +77,8 @@ ENV GRPC_VERBOSITY=ERROR
 #   CONTEXT_CACHE_MIN_TOKENS      — Min tokens to trigger caching (default: 2048)
 #   CONTEXT_CACHE_TTL_SECONDS     — Cache TTL in seconds (default: 1800)
 #   CONTEXT_CACHE_INTERVALS       — Max cache reuses before refresh (default: 10)
+#   CONTEXT_COMPRESSION_TRIGGER_TOKENS — Start compressing when tokens exceed this (default: 100000)
+#   CONTEXT_COMPRESSION_TARGET_TOKENS  — Compress down to this many tokens (default: 80000)
 # Secrets are injected via Secret Manager → env vars (see cloudbuild.yaml)
 
 EXPOSE ${PORT}

@@ -90,7 +90,7 @@ def _with_temporal_context(
         dt = (
             f"{_DAYS_ES[now.weekday()]} {now.day} de "
             f"{_MONTHS_ES[now.month]} de {now.year}, "
-            f"{now.strftime('%I:%M %p')}"
+            f"{now.strftime('%H:%M')} (hora Colombia)"
         )
         base = f"[Fecha y hora actual: {dt}]\n\n{instruction}"
 

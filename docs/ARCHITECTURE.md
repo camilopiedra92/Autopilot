@@ -198,6 +198,40 @@ agent = create_platform_agent(
 | `CONTEXT_CACHE_TTL_SECONDS` | `1800`  | Cache TTL (30 min)            |
 | `CONTEXT_CACHE_INTERVALS`   | `10`    | Max uses before refresh       |
 
+### Context Window Compression (ADK-Native SlidingWindow)
+
+Long-running conversations (e.g., the Telegram assistant) accumulate many session events. Without compression, the context window bloats, eventually exceeding the model's limit or driving up costs.
+
+**Solution**: ADK's native `ContextWindowCompressionConfig` with `SlidingWindow`, passed via `RunConfig` to `Runner.run_async()`. When the token count exceeds `trigger_tokens`, older history is automatically compressed down to `target_tokens`.
+
+This is handled entirely by `ADKRunner` — individual agents and workflows **never** deal with compression. It's always-on (configurable thresholds) or explicitly disabled by setting both to `0`.
+
+**Configuration (12-Factor):**
+
+| Variable                             | Default  | Purpose                                 |
+| ------------------------------------ | -------- | --------------------------------------- |
+| `CONTEXT_COMPRESSION_TRIGGER_TOKENS` | `100000` | Start compression (~78% of 128k window) |
+| `CONTEXT_COMPRESSION_TARGET_TOKENS`  | `80000`  | Compress down to (~62% of 128k window)  |
+
+> [!NOTE]
+> Set both to `0` to disable compression entirely. The `RunConfig` is created once per invocation — minimal overhead.
+
+**How it works:**
+
+1. `_create_run_config()` reads env vars → builds `RunConfig(context_window_compression=SlidingWindow(...))`
+2. `ADKRunner._run_adk_agent()` passes `run_config` to `runner.run_async()`
+3. ADK's `Runner` transparently compresses older events before sending to the LLM
+
+### Cross-Session Memory Transfer
+
+After each successful agent execution, `ADKRunner` calls `add_session_to_memory(session)` to transfer session events to the memory service. This enables cross-session recall — an agent can answer "what did we discuss yesterday?" using `ctx.recall()` or ADK's native `search_memory()`.
+
+**Key characteristics:**
+
+- **Fire-and-forget**: Failures are logged and swallowed (never blocks the pipeline)
+- **Backend-dependent**: `InMemoryMemoryService` → keyword-matching, process-scoped (lost on restart). `VertexAiMemoryBankService` → persistent, semantic search
+- **Always-on**: Transfer happens automatically after every successful execution — no opt-in needed
+
 ### Temporal Context & State Injection (ADK InstructionProvider)
 
 All agents created via `create_platform_agent` automatically know the current date and time. This is implemented using ADK's native **InstructionProvider** pattern — `LlmAgent(instruction=callable)` instead of a plain string.

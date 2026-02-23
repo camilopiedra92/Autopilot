@@ -12,6 +12,8 @@ This is the ONLY way ADK agents are executed within the platform. It adds:
   - Structured result extraction (PipelineResult)
   - Function call response handling (Native Output Schema)
   - Per-agent context caching via App wrapper (when opted in)
+  - Context window compression (ADK-native SlidingWindow)
+  - Cross-session memory transfer (add_session_to_memory)
 
 Usage:
     from autopilot.core.adk_runner import get_adk_runner
@@ -28,6 +30,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import time
 import structlog
 from typing import Any
@@ -35,6 +38,7 @@ from uuid import uuid4
 
 from opentelemetry import trace
 
+from google.adk.agents.run_config import RunConfig
 from google.adk.apps.app import App
 from google.adk.runners import Runner
 from autopilot.agents.context_cache import (
@@ -61,6 +65,42 @@ from autopilot.core.bus import get_event_bus
 
 logger = structlog.get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+
+
+# ── Context Window Compression Factory ────────────────────────────────
+# ADK-native SlidingWindow compression.  When the token count of session
+# events exceeds ``trigger_tokens``, older history is compressed down to
+# ``target_tokens``.  Configured via 12-Factor env vars.  Set both to 0
+# to disable entirely (no RunConfig overhead).
+
+_DEFAULT_TRIGGER_TOKENS = 100_000  # ~78 % of Gemini 128k window
+_DEFAULT_TARGET_TOKENS = 80_000  # ~62 % of Gemini 128k window
+
+
+def _create_run_config() -> RunConfig | None:
+    """Build a RunConfig with SlidingWindow compression (if enabled).
+
+    Returns ``None`` when compression is disabled (both thresholds == 0),
+    which tells the Runner to use its defaults with zero overhead.
+    """
+    trigger = int(
+        os.environ.get("CONTEXT_COMPRESSION_TRIGGER_TOKENS", _DEFAULT_TRIGGER_TOKENS)
+    )
+    target = int(
+        os.environ.get("CONTEXT_COMPRESSION_TARGET_TOKENS", _DEFAULT_TARGET_TOKENS)
+    )
+
+    if trigger == 0 and target == 0:
+        return None
+
+    return RunConfig(
+        context_window_compression=types.ContextWindowCompressionConfig(
+            trigger_tokens=trigger,
+            sliding_window=types.SlidingWindow(
+                target_tokens=target,
+            ),
+        ),
+    )
 
 
 class ADKRunner:
@@ -219,10 +259,12 @@ class ADKRunner:
             # guarantees structured JSON text output. ADK also disables tools
             # and function calls in this mode, so only text parts are emitted.
             final_text = ""
+            run_config = _create_run_config()
             async for event in runner.run_async(
                 user_id=self._user_id,
                 session_id=session_id,
                 new_message=user_message,
+                run_config=run_config,
             ):
                 if event.is_final_response():
                     if event.content and event.content.parts:
@@ -313,6 +355,9 @@ class ADKRunner:
                 result=pipeline_result,
             )
 
+            # ── Transfer session events to memory (cross-session recall) ─
+            await self._transfer_session_to_memory(session)
+
             return pipeline_result
 
         except Exception as e:
@@ -374,6 +419,31 @@ class ADKRunner:
             logger.warning(
                 "llm_artifact_persist_failed",
                 agent=agent_name,
+                error=str(exc),
+            )
+
+    async def _transfer_session_to_memory(self, session) -> None:
+        """Transfer session events to memory for cross-session recall.
+
+        Fire-and-forget: failures are logged and swallowed (same pattern as
+        ``_persist_llm_artifact``).  When ``MEMORY_BACKEND=memory`` this
+        stores events in-process for keyword-based recall across sessions.
+        When ``MEMORY_BACKEND=vertexai`` it persists to Vertex AI Memory Bank
+        for durable semantic search.
+        """
+        if not self._memory_service:
+            return
+        try:
+            await self._memory_service.add_session_to_memory(session)
+            logger.debug(
+                "session_memory_transferred",
+                session_id=session.id,
+                event_count=len(session.events) if session.events else 0,
+            )
+        except Exception as exc:
+            logger.warning(
+                "session_memory_transfer_failed",
+                session_id=getattr(session, "id", "unknown"),
                 error=str(exc),
             )
 
