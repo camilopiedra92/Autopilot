@@ -3,12 +3,13 @@ Unit tests for the Conversational Assistant workflow.
 
 Tests:
   1. Manifest loading — fields, triggers, tags
-  2. Telegram update parsing — extract text and chat_id
-  3. Agent creation — verify tool list and agent name
-  4. Webhook route registration — verify endpoint mounts
+  2. Agent creation — verify tool list and agent name
+  3. Event subscription — verify setup() registers subscriber
+  4. Execute — edge cases and error handling
 """
 
 import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 # ── Manifest Tests ───────────────────────────────────────────────────
@@ -55,60 +56,6 @@ class TestManifest:
         assert "ynab" in tags
 
 
-# ── Message Extraction Tests ─────────────────────────────────────────
-
-
-class TestMessageExtraction:
-    """Verify Telegram update parsing extracts text and chat_id correctly."""
-
-    def test_extract_text_message(self, sample_text_update):
-        from workflows.conversational_assistant.workflow import _extract_message
-
-        result = _extract_message(sample_text_update)
-        assert result is not None
-
-        text, chat_id = result
-        assert text == "Recuérdame comprar leche mañana"
-        assert chat_id == "1093871758"
-
-    def test_extract_photo_returns_none(self, sample_photo_update):
-        from workflows.conversational_assistant.workflow import _extract_message
-
-        result = _extract_message(sample_photo_update)
-        assert result is None
-
-    def test_extract_callback_query_returns_none(self, sample_callback_query_update):
-        from workflows.conversational_assistant.workflow import _extract_message
-
-        result = _extract_message(sample_callback_query_update)
-        assert result is None
-
-    def test_extract_empty_update(self):
-        from workflows.conversational_assistant.workflow import _extract_message
-
-        result = _extract_message({})
-        assert result is None
-
-    def test_extract_edited_message(self):
-        from workflows.conversational_assistant.workflow import _extract_message
-
-        update = {
-            "update_id": 123,
-            "edited_message": {
-                "message_id": 44,
-                "chat": {"id": 1093871758, "type": "private"},
-                "date": 1708700002,
-                "text": "Mensaje editado",
-            },
-        }
-
-        result = _extract_message(update)
-        assert result is not None
-        text, chat_id = result
-        assert text == "Mensaje editado"
-        assert chat_id == "1093871758"
-
-
 # ── Agent Creation Tests ─────────────────────────────────────────────
 
 
@@ -150,26 +97,76 @@ class TestAgentCreation:
         assert "{telegram_chat_id}" in ASSISTANT_INSTRUCTION
 
 
-# ── Webhook Route Registration Tests ─────────────────────────────────
+# ── Event Subscription Tests ─────────────────────────────────────────
 
 
-class TestWebhookRegistration:
-    """Verify the workflow registers its Telegram webhook route."""
+class TestEventSubscription:
+    """Verify the workflow subscribes to telegram.message_received events."""
 
-    def test_register_routes_adds_endpoint(self):
+    @pytest.mark.asyncio
+    async def test_setup_registers_subscriber(self):
         from workflows.conversational_assistant.workflow import (
             ConversationalAssistantWorkflow,
         )
-        from fastapi import FastAPI
 
-        app = FastAPI()
         wf = ConversationalAssistantWorkflow()
 
-        wf.register_routes(app)
+        with patch(
+            "autopilot.core.subscribers.get_subscriber_registry"
+        ) as mock_get_reg:
+            mock_registry = MagicMock()
+            mock_get_reg.return_value = mock_registry
 
-        # Check that the /telegram/webhook route was registered
-        routes = [route.path for route in app.routes]
-        assert "/telegram/webhook" in routes
+            await wf.setup()
+
+            mock_registry.register.assert_called_once_with(
+                "telegram.message_received",
+                wf._on_telegram_message,
+                name="conversational_assistant_telegram",
+            )
+
+    @pytest.mark.asyncio
+    async def test_on_telegram_message_skips_empty(self):
+        from workflows.conversational_assistant.workflow import (
+            ConversationalAssistantWorkflow,
+        )
+
+        wf = ConversationalAssistantWorkflow()
+
+        # Empty payload should be skipped (no run called)
+        msg = MagicMock()
+        msg.payload = {"message": "", "telegram_chat_id": ""}
+
+        with patch.object(wf, "run", new_callable=AsyncMock) as mock_run:
+            await wf._on_telegram_message(msg)
+            mock_run.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_on_telegram_message_triggers_run(self):
+        from workflows.conversational_assistant.workflow import (
+            ConversationalAssistantWorkflow,
+        )
+        from autopilot.models import TriggerType
+
+        wf = ConversationalAssistantWorkflow()
+
+        msg = MagicMock()
+        msg.payload = {
+            "message": "Hola",
+            "telegram_chat_id": "123",
+            "update": {"update_id": 1},
+        }
+
+        with patch.object(wf, "run", new_callable=AsyncMock) as mock_run:
+            await wf._on_telegram_message(msg)
+            mock_run.assert_called_once_with(
+                TriggerType.WEBHOOK,
+                {
+                    "message": "Hola",
+                    "telegram_chat_id": "123",
+                    "update": {"update_id": 1},
+                },
+            )
 
     def test_workflow_inherits_base(self):
         from workflows.conversational_assistant.workflow import (

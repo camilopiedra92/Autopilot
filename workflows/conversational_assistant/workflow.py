@@ -1,125 +1,85 @@
 """
 ConversationalAssistantWorkflow — Personal Telegram assistant.
 
-Receives Telegram webhook updates, extracts the user message,
-runs a ReAct agent with Todoist/YNAB/Telegram tools, and responds.
+Subscribes to ``telegram.message_received`` events from the platform-level
+webhook adapter, runs an ADK agent with Todoist/YNAB/Telegram tools, and
+responds within the same ADK session (multi-turn conversations).
 
 manifest.yaml and agent cards are auto-loaded by BaseWorkflow.
-This file provides the custom execute() and Telegram webhook route.
 """
 
-import os
+from __future__ import annotations
+
 import structlog
 
 from autopilot.base_workflow import BaseWorkflow
-from autopilot.models import WorkflowResult, RunStatus, TriggerType
+from autopilot.models import WorkflowResult, RunStatus
 
 logger = structlog.get_logger(__name__)
-
-# The secret token used to verify Telegram webhook requests
-TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
-
-
-def _extract_message(update: dict) -> tuple[str, str] | None:
-    """
-    Extract message text and chat_id from a Telegram Update object.
-
-    Returns (message_text, chat_id) or None if the update is not a text message.
-    """
-    message = update.get("message") or update.get("edited_message")
-    if not message:
-        return None
-
-    text = message.get("text", "")
-    if not text:
-        return None
-
-    chat_id = str(message.get("chat", {}).get("id", ""))
-    if not chat_id:
-        return None
-
-    return text, chat_id
 
 
 class ConversationalAssistantWorkflow(BaseWorkflow):
     """
-    Personal Telegram assistant powered by a ReAct agent.
+    Personal Telegram assistant powered by an ADK agent.
 
-    Receives Telegram webhook updates and runs an autonomous agent that
-    can manage Todoist tasks, query YNAB budgets, and reply via Telegram.
+    Subscribes to ``telegram.message_received`` events (published by the
+    platform-level Telegram webhook adapter in ``webhooks.py``).
+    Runs an autonomous agent that manages Todoist tasks, queries YNAB
+    budgets, and replies via Telegram.
 
-    Event flow:
-      POST /telegram/webhook → extract message → ReAct agent → tools → reply
+    Event Subscriptions (registered in ``setup()``):
+      - ``telegram.message_received`` → Run assistant agent
     """
 
-    def register_routes(self, app) -> None:
-        """Mount the Telegram webhook endpoint on the FastAPI app."""
-        from fastapi import APIRouter, HTTPException, Request
+    async def setup(self) -> None:
+        """Register event subscribers for this workflow."""
+        from autopilot.core.subscribers import get_subscriber_registry
 
-        router = APIRouter(tags=["telegram"])
+        registry = get_subscriber_registry()
 
-        @router.post("/telegram/webhook")
-        async def telegram_webhook(request: Request):
-            """
-            Handle incoming Telegram Bot API webhook updates.
+        # React to Telegram messages — same pattern as bank_to_ynab + email.received
+        registry.register(
+            "telegram.message_received",
+            self._on_telegram_message,
+            name="conversational_assistant_telegram",
+        )
 
-            Validates the secret token header, extracts the message,
-            and runs the workflow asynchronously.
-            """
-            # Verify secret token if configured
-            if TELEGRAM_WEBHOOK_SECRET:
-                token = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-                if token != TELEGRAM_WEBHOOK_SECRET:
-                    raise HTTPException(status_code=403, detail="Invalid secret token")
+    async def _on_telegram_message(self, msg) -> None:
+        """
+        React to ``telegram.message_received`` events from the AgentBus.
 
-            try:
-                update = await request.json()
-            except Exception:
-                raise HTTPException(status_code=400, detail="Invalid JSON")
+        Extracts the message and chat_id, then runs the workflow.
+        """
+        payload = msg.payload if hasattr(msg, "payload") else msg
 
-            # Extract message — ignore non-text updates silently
-            result = _extract_message(update)
-            if not result:
-                return {"status": "ignored", "reason": "no_text_message"}
+        message = payload.get("message", "")
+        chat_id = payload.get("telegram_chat_id", "")
 
-            message_text, chat_id = result
-
-            # Verify authorized user
-            authorized_chat_id = self.manifest.settings[0].default or os.environ.get(
-                "TELEGRAM_CHAT_ID", ""
+        if not message or not chat_id:
+            logger.debug(
+                "telegram_event_skipped",
+                workflow=self.manifest.name,
+                reason="missing_message_or_chat_id",
             )
-            if authorized_chat_id and chat_id != authorized_chat_id:
-                logger.warning(
-                    "telegram_unauthorized_chat",
-                    chat_id=chat_id,
-                    authorized=authorized_chat_id,
-                )
-                return {"status": "ignored", "reason": "unauthorized_chat"}
+            return
 
-            logger.info(
-                "telegram_message_received",
-                chat_id=chat_id,
-                text_length=len(message_text),
-                text_preview=message_text[:80],
-            )
+        logger.info(
+            "telegram_event_matched",
+            workflow=self.manifest.name,
+            chat_id=chat_id,
+            text_preview=message[:80],
+        )
 
-            # Run the workflow
-            run = await self.run(
-                TriggerType.WEBHOOK,
-                {
-                    "message": message_text,
-                    "telegram_chat_id": chat_id,
-                    "update": update,
-                },
-            )
+        from autopilot.models import TriggerType
 
-            return {
-                "status": "ok",
-                "run_id": run.id,
-                "workflow_id": run.workflow_id,
-            }
-
-        app.include_router(router)
+        await self.run(
+            TriggerType.WEBHOOK,
+            {
+                "message": message,
+                "telegram_chat_id": chat_id,
+                "update": payload.get("update", {}),
+            },
+        )
 
     async def execute(self, trigger_data: dict) -> WorkflowResult:
         """
@@ -127,7 +87,6 @@ class ConversationalAssistantWorkflow(BaseWorkflow):
 
         Uses a single ADKAgent invocation — the agent autonomously calls
         tools (Todoist, YNAB) and replies via Telegram within one ADK session.
-        No multi-iteration ReAct loop needed for single-turn commands.
         """
         from autopilot.core.context import AgentContext
         from autopilot.core.agent import ADKAgent
