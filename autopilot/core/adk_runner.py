@@ -135,6 +135,7 @@ class ADKRunner:
         initial_state: dict[str, Any] | None = None,
         stream_session_id: str | None = None,
         session_id: str | None = None,
+        persist_memory: bool = False,
     ) -> PipelineResult:
         """
         Run an ADK agent and return a structured result.
@@ -147,6 +148,8 @@ class ADKRunner:
             session_id: If provided, reuses this session for conversation continuity.
                         If the session exists, its history is preserved (multi-turn).
                         If not, a new session is created with this ID.
+            persist_memory: If True, transfer session events to long-term memory
+                           after execution. Controlled by manifest ``memory`` flag.
 
         Returns:
             PipelineResult with final text, parsed JSON, session state, and timing.
@@ -160,6 +163,7 @@ class ADKRunner:
             initial_state,
             effective_stream_id,
             session_id=effective_session_id,
+            persist_memory=persist_memory,
         )
 
     async def _run_adk_agent(
@@ -170,6 +174,7 @@ class ADKRunner:
         effective_stream_id: str,
         *,
         session_id: str | None = None,
+        persist_memory: bool = False,
     ) -> PipelineResult:
         """Execute the ADK agent through Runner + SessionService."""
         with tracer.start_as_current_span(
@@ -355,8 +360,9 @@ class ADKRunner:
                 result=pipeline_result,
             )
 
-            # ── Transfer session events to memory (cross-session recall) ─
-            await self._transfer_session_to_memory(session)
+            # ── Transfer session events to memory (workflow opt-in) ──
+            if persist_memory:
+                await self._transfer_session_to_memory(session)
 
             return pipeline_result
 

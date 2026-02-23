@@ -115,6 +115,7 @@ class ConversationalAssistantWorkflow(BaseWorkflow):
                 "source": "telegram_webhook",
                 # Use chat_id as session_id for conversation continuity
                 "session_id": f"telegram_{chat_id}",
+                "persist_memory": self.manifest.memory,
             },
         )
         # Put chat_id in state so the InstructionProvider resolves

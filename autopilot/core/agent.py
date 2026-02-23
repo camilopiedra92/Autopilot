@@ -323,6 +323,7 @@ class ADKAgent(BaseAgent[dict, dict]):
             initial_state=ctx.state,
             stream_session_id=ctx.execution_id,
             session_id=ctx.metadata.get("session_id"),
+            persist_memory=ctx.metadata.get("persist_memory", False),
         )
 
         output_key = getattr(self._adk_agent, "output_key", None)

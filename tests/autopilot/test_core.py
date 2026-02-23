@@ -1795,3 +1795,98 @@ class TestMemoryTransfer:
         mock_session = MagicMock()
         # Should NOT raise
         await runner._transfer_session_to_memory(mock_session)
+
+
+class TestPersistMemoryGating:
+    """Tests for persist_memory flag gating _transfer_session_to_memory."""
+
+    @pytest.mark.asyncio
+    async def test_transfer_called_when_persist_memory_true(self):
+        """When persist_memory=True, _transfer_session_to_memory is called."""
+        from unittest.mock import AsyncMock, patch
+        from autopilot.core.adk_runner import ADKRunner
+
+        runner = ADKRunner.__new__(ADKRunner)
+        runner._app_name = "test"
+        runner._user_id = "default"
+        runner._session_service = AsyncMock()
+        runner._memory_service = AsyncMock()
+        runner._artifact_service = AsyncMock()
+
+        mock_session = MagicMock()
+        mock_session.id = "sess1"
+        mock_session.state = {}
+        mock_session.events = []
+
+        runner._session_service.get_session = AsyncMock(return_value=mock_session)
+        runner._session_service.create_session = AsyncMock(return_value=mock_session)
+
+        runner._transfer_session_to_memory = AsyncMock()
+        runner._persist_llm_artifact = AsyncMock()
+
+        # Mock the Runner to yield a final event
+        mock_event = MagicMock()
+        mock_event.is_final_response.return_value = True
+        mock_event.content.parts = [MagicMock(text="Hello")]
+
+        with patch("autopilot.core.adk_runner.Runner") as MockRunner:
+            mock_runner_instance = MagicMock()
+
+            async def fake_run_async(**kwargs):
+                yield mock_event
+
+            mock_runner_instance.run_async = fake_run_async
+            MockRunner.return_value = mock_runner_instance
+
+            await runner.run(
+                pipeline=MagicMock(name="test_agent"),
+                message="hello",
+                persist_memory=True,
+            )
+
+        runner._transfer_session_to_memory.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_transfer_skipped_when_persist_memory_false(self):
+        """When persist_memory=False (default), _transfer_session_to_memory is NOT called."""
+        from unittest.mock import AsyncMock, patch
+        from autopilot.core.adk_runner import ADKRunner
+
+        runner = ADKRunner.__new__(ADKRunner)
+        runner._app_name = "test"
+        runner._user_id = "default"
+        runner._session_service = AsyncMock()
+        runner._memory_service = AsyncMock()
+        runner._artifact_service = AsyncMock()
+
+        mock_session = MagicMock()
+        mock_session.id = "sess1"
+        mock_session.state = {}
+        mock_session.events = []
+
+        runner._session_service.get_session = AsyncMock(return_value=mock_session)
+        runner._session_service.create_session = AsyncMock(return_value=mock_session)
+
+        runner._transfer_session_to_memory = AsyncMock()
+        runner._persist_llm_artifact = AsyncMock()
+
+        mock_event = MagicMock()
+        mock_event.is_final_response.return_value = True
+        mock_event.content.parts = [MagicMock(text="Hello")]
+
+        with patch("autopilot.core.adk_runner.Runner") as MockRunner:
+            mock_runner_instance = MagicMock()
+
+            async def fake_run_async(**kwargs):
+                yield mock_event
+
+            mock_runner_instance.run_async = fake_run_async
+            MockRunner.return_value = mock_runner_instance
+
+            await runner.run(
+                pipeline=MagicMock(name="test_agent"),
+                message="hello",
+                persist_memory=False,
+            )
+
+        runner._transfer_session_to_memory.assert_not_called()

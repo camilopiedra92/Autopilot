@@ -130,6 +130,17 @@ class BaseWorkflow:
             )
             result = await pipeline.execute(ctx, initial_input=trigger_data)
 
+            # Transfer session events to long-term memory (workflow opt-in)
+            if self.manifest.memory and ctx.session:
+                try:
+                    await ctx.memory.add_session_to_memory(ctx.session)
+                except Exception as exc:
+                    logger.warning(
+                        "dsl_memory_transfer_failed",
+                        workflow=self.manifest.name,
+                        error=str(exc),
+                    )
+
             return WorkflowResult(
                 workflow_id=self.manifest.name,
                 status=RunStatus.SUCCESS,

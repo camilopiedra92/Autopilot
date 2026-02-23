@@ -57,6 +57,7 @@ description: "Parses invoices from email" # A2A discovery description
 version: "1.0.0"
 icon: "📄"
 color: "#4285f4"
+memory: false # Set true for cross-session recall
 
 triggers:
   - type: gmail_push
@@ -79,16 +80,17 @@ tags:
 
 **Fields reference:**
 
-| Field              | Purpose                     | Required |
-| ------------------ | --------------------------- | -------- |
-| `name`             | Unique identifier           | ✅       |
-| `display_name`     | Human-readable UI label     | ✅       |
-| `description`      | What this workflow does     | ✅       |
-| `version`          | Semver                      | ✅       |
-| `triggers`         | Activation method           | ✅       |
-| `settings`         | Config / secrets needed     | Optional |
-| `agents.cards_dir` | Path to `.agent.yaml` cards | Optional |
-| `tags`             | Categorization              | Optional |
+| Field              | Purpose                            | Required                    |
+| ------------------ | ---------------------------------- | --------------------------- |
+| `name`             | Unique identifier                  | ✅                          |
+| `display_name`     | Human-readable UI label            | ✅                          |
+| `description`      | What this workflow does            | ✅                          |
+| `version`          | Semver                             | ✅                          |
+| `triggers`         | Activation method                  | ✅                          |
+| `memory`           | Persist events to long-term memory | Optional (default: `false`) |
+| `settings`         | Config / secrets needed            | Optional                    |
+| `agents.cards_dir` | Path to `.agent.yaml` cards        | Optional                    |
+| `tags`             | Categorization                     | Optional                    |
 
 ---
 

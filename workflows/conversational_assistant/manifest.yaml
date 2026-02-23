@@ -4,6 +4,7 @@ description: "Bot de Telegram que entiende comandos naturales y ejecuta acciones
 version: "1.0.0"
 icon: "💬"
 color: "#0088cc"
+memory: true
 
 triggers:
   - type: webhook

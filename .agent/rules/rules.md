@@ -32,6 +32,7 @@
 - **ALWAYS** use `get_callback_manager()` to register lifecycle hooks (rate limits, audit logs, auth checks) at the platform level.
 - **ALWAYS** set `output_key` on LLM agents to leverage ADK session state for structured output. When the agent produces structured data, **ALWAYS** also set `output_schema` (Pydantic model) — this activates Gemini native JSON mode (`response_schema` + `response_mime_type=application/json`) and auto-disables agent transfers for full isolation. Never rely on fragile text parsing as the primary output path.
 - **PREFER** LLM-friendly tool signatures with explicit named parameters over opaque `dict` parameters. When a connector method takes a single `dict` (e.g., `create_task(payload: dict)`), create an `_simple` wrapper with explicit args (e.g., `create_task_simple(content, due_string, priority)`) and use that in agent tool lists. LLMs cannot infer dict schema from a `dict` type hint.
+- **ALWAYS** declare `memory: true` in `manifest.yaml` for workflows that need cross-session recall (e.g., conversational agents). The platform persists session events to long-term memory only when opted in. Transactional workflows (e.g., `bank_to_ynab`) default to `memory: false` — no cost, no noise.
 
 ## 4. Declarative Pipelines (DSL)
 

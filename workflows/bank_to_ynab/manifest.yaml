@@ -4,6 +4,7 @@ description: "Parse bank notification emails from Bancolombia and automatically 
 version: "5.0.0"
 icon: "🏦"
 color: "#4285F4"
+memory: false
 
 triggers:
   - type: gmail_push

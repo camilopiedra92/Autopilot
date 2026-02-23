@@ -624,6 +624,7 @@ Every `AgentContext` includes **session** (ADK `Session` object) and **memory** 
 - Session backend is selected via `SESSION_BACKEND` env var using `create_session_service()` factory. Default `InMemorySessionService` for dev/test; `FirestoreSessionService` for production.
 - **Multi-turn conversations**: `ADKRunner.run()` accepts an optional `session_id`. When provided, it uses a **get-or-create** pattern to resume existing sessions. Callers pass `session_id` via `ctx.metadata["session_id"]` — `ADKAgent.run()` threads it through automatically.
 - Memory backend is selected via `MEMORY_BACKEND` env var using `create_memory_service()` factory. Default `InMemoryMemoryService` for dev/test; `FirestoreVectorMemoryService` for production (durable, semantic vector search via Gemini embeddings).
+- **Memory persistence is workflow opt-in**: Workflows declare `memory: true` in their `manifest.yaml` to persist session events to long-term memory after execution. The platform respects this flag across all execution paths (ADKRunner, Pipeline, DAG). Workflows without the flag (default `memory: false`) never persist — no cost, no noise.
 
 #### Session Backend Selection (12-Factor Config-Driven)
 

@@ -229,3 +229,110 @@ class TestRunAppliesSettingDefaults:
         # The run record should contain the enriched trigger data
         assert run.trigger_data["auto_create"] is True
         assert run.trigger_data["body"] == "email"
+
+
+# ── Tests: Manifest memory flag ──────────────────────────────────────
+
+
+class TestManifestMemoryFlag:
+    """Tests for the manifest ``memory`` flag."""
+
+    def test_memory_defaults_to_false(self):
+        manifest = _make_manifest()
+        assert manifest.memory is False
+
+    def test_memory_true_parsed(self):
+        manifest = _make_manifest(memory=True)
+        assert manifest.memory is True
+
+    def test_memory_false_explicit(self):
+        manifest = _make_manifest(memory=False)
+        assert manifest.memory is False
+
+
+# ── Tests: DSL pipeline memory transfer ──────────────────────────────
+
+
+@pytest.mark.asyncio
+class TestDSLPipelineMemoryTransfer:
+    """Tests for memory transfer in BaseWorkflow._execute_dsl_pipeline."""
+
+    async def test_transfers_memory_when_manifest_memory_true(self):
+        """When manifest.memory=True and session exists, add_session_to_memory is called."""
+        from unittest.mock import AsyncMock, patch, MagicMock
+
+        manifest = _make_manifest(memory=True)
+        wf = StubWorkflow(manifest)
+
+        mock_session = MagicMock()
+        mock_memory = AsyncMock()
+
+        # Patch the DSL pipeline execution to set ctx.session
+        async def fake_execute(ctx, initial_input=None):
+            ctx.session = mock_session
+            ctx.memory = mock_memory
+            result = MagicMock()
+            result.state = {"done": True}
+            return result
+
+        with patch("autopilot.core.dsl_loader.load_workflow") as mock_load:
+            mock_pipeline = MagicMock()
+            mock_pipeline.execute = fake_execute
+            mock_load.return_value = mock_pipeline
+
+            # Create a fake pipeline.yaml path
+            import tempfile
+            import os
+
+            with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as f:
+                f.write(b"name: test\nsteps: []")
+                pipeline_path = f.name
+
+            try:
+                from pathlib import Path
+
+                result = await wf._execute_dsl_pipeline({}, Path(pipeline_path))
+            finally:
+                os.unlink(pipeline_path)
+
+        assert result.status == RunStatus.SUCCESS
+        mock_memory.add_session_to_memory.assert_called_once_with(mock_session)
+
+    async def test_skips_memory_when_manifest_memory_false(self):
+        """When manifest.memory=False, add_session_to_memory is NOT called."""
+        from unittest.mock import AsyncMock, patch, MagicMock
+
+        manifest = _make_manifest(memory=False)
+        wf = StubWorkflow(manifest)
+
+        mock_session = MagicMock()
+        mock_memory = AsyncMock()
+
+        async def fake_execute(ctx, initial_input=None):
+            ctx.session = mock_session
+            ctx.memory = mock_memory
+            result = MagicMock()
+            result.state = {"done": True}
+            return result
+
+        with patch("autopilot.core.dsl_loader.load_workflow") as mock_load:
+            mock_pipeline = MagicMock()
+            mock_pipeline.execute = fake_execute
+            mock_load.return_value = mock_pipeline
+
+            import tempfile
+            import os
+
+            with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as f:
+                f.write(b"name: test\nsteps: []")
+                pipeline_path = f.name
+
+            try:
+                from pathlib import Path
+
+                result = await wf._execute_dsl_pipeline({}, Path(pipeline_path))
+            finally:
+                os.unlink(pipeline_path)
+
+        assert result.status == RunStatus.SUCCESS
+        mock_memory.add_session_to_memory.assert_not_called()

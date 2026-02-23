@@ -182,9 +182,24 @@ class AsyncTelegramClient:
     async def send_message_string(self, chat_id: str, text: str) -> str:
         """
         AI-friendly wrapper — sends a message and returns a human-readable
-        confirmation string.
+        confirmation string. Automatically converts Markdown to Telegram HTML
+        so it renders correctly.
         """
-        result = await self.send_message(chat_id=chat_id, text=text)
+        import re
+
+        # 1. Escape HTML entities to avoid parsing errors
+        html_text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+        # 2. Convert standard markdown bold (**) to HTML
+        html_text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", html_text)
+
+        # 3. Convert markdown inline code (`) to HTML
+        html_text = re.sub(r"`([^`]+)`", r"<code>\1</code>", html_text)
+
+        # Send using HTML parse mode
+        result = await self.send_message(
+            chat_id=chat_id, text=html_text, parse_mode="HTML"
+        )
         msg_id = result.get("message_id", "unknown")
         return f"Message sent successfully (message_id: {msg_id})"
 

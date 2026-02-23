@@ -101,6 +101,9 @@ class WorkflowManifest(BaseModel):
     # Is this workflow currently enabled?
     enabled: bool = True
 
+    # Persist session events to long-term memory (cross-session recall)
+    memory: bool = False
+
 
 # ── Workflow Execution ───────────────────────────────────────────────
 
