@@ -237,7 +237,11 @@ class PubSubConnector(BaseConnector):
 
     async def teardown(self) -> None:
         """Platform shutdown hook."""
-        await self.stop_watching()
+        # Intentionally do not call stop_watching() here.
+        # The watch must outlive the ephemeral Cloud Run instances
+        # (which scale to zero) so that Gmail continues sending
+        # notifications for new emails.
+        pass
 
     async def health_check(self) -> bool:
         """Check if the watch is active."""
@@ -476,6 +480,12 @@ class PubSubConnector(BaseConnector):
             }
             if page_token:
                 params["pageToken"] = page_token
+            
+            # Optimization: Filter Gmail changes heavily by passing the target label.
+            # Gmail API accepts exactly one labelId string. Since our use case
+            # ensures we have at least one target label, pass the first one.
+            if self._resolved_label_ids:
+                params["labelId"] = self._resolved_label_ids[0]
 
             response = self._gmail.service.users().history().list(**params).execute()
 
