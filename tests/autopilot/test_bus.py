@@ -11,7 +11,7 @@ Covers:
 """
 
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock
 
 from autopilot.core.bus import (
     EventBus,

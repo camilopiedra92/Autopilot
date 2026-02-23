@@ -209,24 +209,18 @@ if os.getenv("K_SERVICE"):  # Running on Cloud Run
 
 ---
 
-### A5. Dockerfile — Multi-Stage Leak
+### ✅ A5. Dockerfile — Multi-Stage Leak & Worker Fix — DONE
 
-The Dockerfile does a proper multi-stage build BUT then:
+The Dockerfile had two issues:
 
-```dockerfile
-# Copy application code (.dockerignore excludes sensitive files)
-COPY . .
-```
+1. **`COPY . .` in runtime stage** — copied everything into the final image, relying solely on `.dockerignore` (denylist). Replaced with **explicit allowlist COPYs**: `app.py`, `autopilot/`, `workflows/`. Secrets, docs, scripts, configs excluded by omission.
 
-This copies **everything** into the runtime stage, including `tests/`, `docs/`, `.git/`, `venv/`, etc. The `.dockerignore` should handle this, but the safer edge pattern is to **explicitly COPY only what's needed**:
+2. **`--workers 2` hardcoded** — Cloud Run deploys with `--cpu=1`. Multiple Uvicorn workers waste memory with zero CPU parallelism (GIL) for this I/O-bound async app. Removed `--workers 2`, defaulting to 1 worker. Tunable via `WEB_CONCURRENCY` env var (Uvicorn native).
 
-```dockerfile
-COPY app.py ./
-COPY autopilot/ ./autopilot/
-COPY workflows/ ./workflows/
-```
+Also hardened `.dockerignore` with `docs/`, `scripts/`, `*.egg-info/`, `ruff.toml`, `.env.example` as belt-and-suspenders.
 
-**Also**: `--workers 2` is hardcoded. Cloud Run should use `--workers 1` with `--threads` instead, since each instance has 1-2 vCPUs and multiple workers waste memory. Or use `WEB_CONCURRENCY` env var.
+> [!NOTE]
+> **COMPLETED** — Explicit COPY allowlist in Dockerfile. `--workers 2` → single worker (Cloud Run optimal). `.dockerignore` hardened.
 
 ---
 
@@ -342,7 +336,7 @@ The `ToolCallbackManager` has `create_rate_limit_callback` for tools, but there'
 | E6  | ~~Consolidate auth~~                     | ✅ DONE | —      |
 | E8  | ~~Consolidate pipeline_runner~~          | ✅ DONE | —      |
 | A4  | ~~Add Cloud Trace exporter~~             | ✅ DONE | —      |
-| A5  | Fix Dockerfile COPY                      | ADJUST  | 30 min |
+| A5  | ~~Fix Dockerfile COPY~~                  | ✅ DONE | —      |
 
 ### Medium-Term (Month 1) — Edge Differentiation
 

@@ -155,9 +155,7 @@ class EventBusProtocol(abc.ABC):
     ) -> AgentMessage: ...
 
     @abc.abstractmethod
-    def history(
-        self, topic: str, *, limit: int = 50
-    ) -> list[AgentMessage]: ...
+    def history(self, topic: str, *, limit: int = 50) -> list[AgentMessage]: ...
 
     @abc.abstractmethod
     async def replay(

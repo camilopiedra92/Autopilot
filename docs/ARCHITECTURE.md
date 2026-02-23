@@ -1303,3 +1303,41 @@ Deploys to production (`master` branch) are fully automated and secure:
 1. **Workload Identity Federation (WIF)**: We use Google Cloud WIF (`github-pool` / `github-provider`) for keyless authentication. ⛔️ **NEVER** use long-lived JSON service account keys (`credentials.json`).
 2. **Build & Push**: Docker images are built and pushed to Google Artifact Registry.
 3. **Cloud Run Deployment**: The service is updated with the new image, enforcing edge-native constraints (`--min-instances=0`, `--cpu-boost`, secrets injected from Secret Manager).
+
+### 10.4 Dockerfile Standards
+
+The `Dockerfile` uses a **multi-stage build** (builder → runtime) with strict security and size constraints:
+
+#### Explicit COPY Allowlist (No `COPY . .`)
+
+⛔️ **NEVER** use `COPY . .` in the runtime stage. It relies on `.dockerignore` (a denylist) to exclude secrets and junk — any new file at the repo root auto-enters the image.
+✅ **ALWAYS** use explicit COPY directives for exactly the runtime-required paths:
+
+```dockerfile
+COPY app.py ./              # Entry point
+COPY autopilot/ ./autopilot/ # Platform package (all subpackages)
+COPY workflows/ ./workflows/ # Business logic (manifests, pipelines, agents, data)
+```
+
+Secrets (`.env`, `credentials.json`, `token.json`), docs, scripts, tests, and config files are **excluded by omission**. The `.dockerignore` is maintained as a secondary defense layer.
+
+#### Worker Strategy (Cloud Run `--cpu=1`)
+
+⛔️ **NEVER** hardcode `--workers N` in the CMD. Multiple Uvicorn workers on a single vCPU waste memory (duplicate Python interpreter per process) with zero CPU parallelism (GIL).
+✅ **ALWAYS** let Uvicorn default to 1 worker. Override via `WEB_CONCURRENCY` env var if needed.
+
+```dockerfile
+# 1 worker = single asyncio event loop = handles concurrency=80
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]
+```
+
+**Why 1 worker is optimal**: The app is I/O-bound (async FastAPI + `httpx` + external API calls). A single `asyncio` event loop saturates 1 vCPU for I/O workloads. Cloud Run handles horizontal scaling (more instances, not more workers).
+
+#### Secrets at Runtime
+
+OAuth credentials (`credentials.json`, `token.json`) are **never** baked into the image. They are injected at runtime as Secret Manager volume mounts:
+
+```bash
+--set-secrets=/secrets/credentials/credentials.json=gmail-credentials:latest,\
+              /secrets/token/token.json=gmail-token:latest
+```

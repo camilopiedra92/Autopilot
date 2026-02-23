@@ -16,7 +16,6 @@ Covers:
 import pytest
 import textwrap
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 
 from autopilot.core.agent import BaseAgent, FunctionalAgent

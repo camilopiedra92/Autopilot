@@ -38,8 +38,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy application code (.dockerignore excludes sensitive files)
-COPY . .
+# Copy ONLY runtime-required application code (allowlist pattern)
+# Secrets (.env, credentials.json, token.json) excluded by omission
+# Docs, scripts, tests, config files excluded by omission
+COPY app.py ./
+COPY autopilot/ ./autopilot/
+COPY workflows/ ./workflows/
 
 # Security: run as non-root
 RUN useradd -m -r appuser && chown -R appuser:appuser /app
@@ -72,5 +76,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 # ── Start ────────────────────────────────────────────────────────────
 # Cloud Run sets PORT env var; uvicorn listens on 0.0.0.0:$PORT
-# --workers 2: Cloud Run instances typically have 1-2 vCPUs
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "2"]
+#
+# Worker strategy (Cloud Run --cpu=1):
+#   Default: 1 worker — single async event loop handles concurrency=80
+#   Tunable: set WEB_CONCURRENCY env var (Uvicorn reads it natively)
+#   Why: I/O-bound app; multiple workers waste memory with zero CPU gain
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]

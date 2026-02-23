@@ -78,6 +78,9 @@ gcloud run deploy bank-to-ynab \
 | `--concurrency=80`  | **ASGI Optimized**. Maximizes FastAPI's asynchronous event loop efficiency. Unlike synchronous WSGI servers, a single container can comfortably juggle 80 concurrent I/O-bound requests.                                                                                                                                                              |
 | `--cpu-boost`       | **Cold Start Mitigation**. Dynamically allocates maximum base CPU resources during container initialization, dramatically reducing edge routing latency for the first request.                                                                                                                                                                        |
 
+> [!IMPORTANT]
+> **Dockerfile Standards**: The Dockerfile uses an **explicit COPY allowlist** (`app.py`, `autopilot/`, `workflows/`) instead of `COPY . .`. Secrets are excluded by omission. Uvicorn runs with **1 worker** (no `--workers` flag) because the app is I/O-bound and `--cpu=1` — multiple workers waste memory with zero CPU gain. Override via `WEB_CONCURRENCY` env var if needed. See `ARCHITECTURE.md §10.4`.
+
 ## 4. Post-Deployment Verification (Smoke Tests)
 
 Deployments are not considered finished until production health is actively verified.

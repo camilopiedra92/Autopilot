@@ -12,7 +12,7 @@ Covers:
 import asyncio
 import pytest
 from typing import Any
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import MagicMock
 
 from autopilot.core.context import AgentContext
 from autopilot.core.agent import BaseAgent, FunctionalAgent, ADKAgent, functional_agent

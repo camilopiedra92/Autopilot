@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import ConsoleSpanExporter
 
 
@@ -73,9 +72,7 @@ def test_console_exporter_when_no_env():
     from autopilot.observability import setup_tracing
 
     with patch.dict("os.environ", {}, clear=True):
-        with patch(
-            "autopilot.observability.BatchSpanProcessor"
-        ) as mock_bsp:
+        with patch("autopilot.observability.BatchSpanProcessor") as mock_bsp:
             setup_tracing()
             assert mock_bsp.called
             exporter_arg = mock_bsp.call_args[0][0]
@@ -90,9 +87,7 @@ def test_cloud_trace_on_cloud_run():
     mock_class = MagicMock(return_value=mock_exporter)
 
     with patch.dict("os.environ", {"K_SERVICE": "prod-svc"}, clear=True):
-        with patch(
-            "autopilot.observability.BatchSpanProcessor"
-        ) as mock_bsp:
+        with patch("autopilot.observability.BatchSpanProcessor") as mock_bsp:
             with patch.dict(
                 "sys.modules",
                 {
@@ -116,9 +111,7 @@ def test_otlp_endpoint_takes_priority_over_cloud_trace():
     mock_otlp_class = MagicMock(return_value=mock_otlp_exporter)
 
     with patch.dict("os.environ", {"K_SERVICE": "prod-svc"}, clear=True):
-        with patch(
-            "autopilot.observability.BatchSpanProcessor"
-        ) as mock_bsp:
+        with patch("autopilot.observability.BatchSpanProcessor") as mock_bsp:
             with patch.dict(
                 "sys.modules",
                 {

@@ -14,7 +14,7 @@ Covers:
 """
 
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, MagicMock
 
 from autopilot.core.tools.registry import (
     ToolInfo,

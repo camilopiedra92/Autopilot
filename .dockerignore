@@ -39,9 +39,16 @@ tests/
 *.swp
 *.swo
 
-# ── Documentation (not needed in runtime) ────────────────────────────
+# ── Documentation & plans (not needed in runtime) ────────────────────
+docs/
+scripts/
 *.md
 !README.md
+
+# ── Build artifacts & config (consumed only during build or CI) ──────
+*.egg-info/
+ruff.toml
+.env.example
 
 # ── Agent config (dev-only) ──────────────────────────────────────────
 .agent/
