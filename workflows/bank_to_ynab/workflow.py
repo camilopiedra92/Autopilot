@@ -84,4 +84,14 @@ class BankToYnabWorkflow(BaseWorkflow):
             "id": payload.get("email_id", ""),
         }
 
+        # Forward manifest settings from the event payload.
+        # The workflow is self-contained: it knows its own settings from
+        # manifest.yaml and propagates any that the caller included in the
+        # event (e.g. auto_create=False from --no-create).  Settings NOT
+        # present in the event will get their manifest defaults later via
+        # BaseWorkflow._apply_setting_defaults().
+        for setting in self.manifest.settings:
+            if setting.key in payload:
+                trigger_payload[setting.key] = payload[setting.key]
+
         await self.run(TriggerType.GMAIL_PUSH, trigger_payload)

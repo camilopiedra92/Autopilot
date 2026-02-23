@@ -519,6 +519,7 @@ def create_event_bus(backend: str | None = None) -> EventBusProtocol:
         An ``EventBusProtocol`` implementation.
     """
     backend = backend or os.getenv("EVENTBUS_BACKEND", "memory")
+    logger.info("event_bus_backend_selected", backend=backend)
 
     if backend == "pubsub":
         from autopilot.core.bus_pubsub import CloudPubSubEventBus

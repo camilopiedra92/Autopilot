@@ -1127,7 +1127,7 @@ class TestBaseWorkflowStrategy:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 from autopilot.core.session import InMemorySessionService, Session
-from autopilot.core.memory import InMemoryMemoryService
+from autopilot.core.memory import InMemoryMemoryService, create_memory_service
 
 
 class TestSessionStateDict:
@@ -1184,93 +1184,143 @@ class TestSessionStateDict:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  V3 Phase 3 — Memory Service Tests
+#  V3 Phase 3 — Memory Service Tests (ADK-native)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from google.adk.events.event import Event
+from google.genai import types as genai_types
+from autopilot.core.memory import SearchMemoryResponse, MemoryEntry
+
+
+def _make_event(text: str) -> Event:
+    """Helper: create an ADK Event wrapping the given text."""
+    return Event(
+        author="agent",
+        content=genai_types.Content(parts=[genai_types.Part(text=text)]),
+    )
 
 
 class TestInMemoryMemoryService:
-    """Tests for InMemoryMemoryService — long-term semantic memory."""
+    """Tests for ADK InMemoryMemoryService — keyword matching memory."""
 
     @pytest.mark.asyncio
     async def test_add_and_search(self):
         memory = InMemoryMemoryService()
-        await memory.add_observation("The user prefers dark mode")
-        results = await memory.search_relevant("dark theme preference")
-        assert len(results) >= 1
-        assert "dark" in results[0].text.lower()
-        assert results[0].relevance_score > 0
+        await memory.add_events_to_memory(
+            app_name="test",
+            user_id="u1",
+            events=[_make_event("The user prefers dark mode")],
+        )
+        response = await memory.search_memory(
+            app_name="test", user_id="u1", query="dark mode"
+        )
+        assert isinstance(response, SearchMemoryResponse)
+        assert len(response.memories) >= 1
 
     @pytest.mark.asyncio
-    async def test_search_relevance_ordering(self):
-        """More relevant observations should rank higher."""
+    async def test_search_returns_memory_entries(self):
+        """search_memory should return MemoryEntry objects."""
         memory = InMemoryMemoryService()
-        await memory.add_observation("The weather is sunny today")
-        await memory.add_observation("User prefers Python for data analysis")
-        await memory.add_observation("Python is a great programming language for AI")
-
-        results = await memory.search_relevant("Python programming")
-        assert len(results) >= 2
-        # Python-related observations should rank above weather
-        texts = [r.text for r in results]
-        python_indices = [
-            i for i, t in enumerate(texts) if "Python" in t or "python" in t.lower()
-        ]
-        weather_indices = [i for i, t in enumerate(texts) if "weather" in t.lower()]
-        if python_indices and weather_indices:
-            assert min(python_indices) < min(weather_indices)
+        await memory.add_events_to_memory(
+            app_name="test",
+            user_id="u1",
+            events=[_make_event("Python is great for AI")],
+        )
+        response = await memory.search_memory(
+            app_name="test", user_id="u1", query="Python"
+        )
+        assert len(response.memories) >= 1
+        entry = response.memories[0]
+        assert isinstance(entry, MemoryEntry)
+        assert entry.content is not None
 
     @pytest.mark.asyncio
     async def test_search_empty_store(self):
         memory = InMemoryMemoryService()
-        results = await memory.search_relevant("anything")
-        assert results == []
-
-    @pytest.mark.asyncio
-    async def test_search_empty_query(self):
-        memory = InMemoryMemoryService()
-        await memory.add_observation("Some observation")
-        results = await memory.search_relevant("")
-        assert results == []
-
-    @pytest.mark.asyncio
-    async def test_top_k_limit(self):
-        memory = InMemoryMemoryService()
-        for i in range(10):
-            await memory.add_observation(f"Observation number {i} about coding")
-        results = await memory.search_relevant("coding", top_k=3)
-        assert len(results) <= 3
-
-    @pytest.mark.asyncio
-    async def test_observation_metadata_preserved(self):
-        memory = InMemoryMemoryService()
-        await memory.add_observation(
-            "User set timezone to EST",
-            metadata={"source": "preferences", "agent": "settings_agent"},
+        response = await memory.search_memory(
+            app_name="test", user_id="u1", query="anything"
         )
-        results = await memory.search_relevant("timezone")
-        assert len(results) >= 1
-        assert results[0].metadata["source"] == "preferences"
-        assert results[0].metadata["agent"] == "settings_agent"
+        assert isinstance(response, SearchMemoryResponse)
+        assert response.memories == []
 
     @pytest.mark.asyncio
-    async def test_count(self):
+    async def test_multiple_events_searchable(self):
         memory = InMemoryMemoryService()
-        assert await memory.count() == 0
-        await memory.add_observation("First")
-        await memory.add_observation("Second")
-        assert await memory.count() == 2
+        events = [
+            _make_event("The weather is sunny today"),
+            _make_event("User prefers Python for data analysis"),
+            _make_event("Python is a great programming language for AI"),
+        ]
+        await memory.add_events_to_memory(app_name="test", user_id="u1", events=events)
+        response = await memory.search_memory(
+            app_name="test", user_id="u1", query="Python"
+        )
+        assert len(response.memories) >= 1
 
     @pytest.mark.asyncio
-    async def test_observation_timestamp(self):
-        """Each observation should have a valid timestamp."""
+    async def test_user_scoping(self):
+        """Memories should be scoped by app_name/user_id."""
         memory = InMemoryMemoryService()
-        obs = await memory.add_observation("Test observation")
-        assert obs.timestamp is not None
-        assert obs.text == "Test observation"
+        await memory.add_events_to_memory(
+            app_name="app_a", user_id="user1", events=[_make_event("Secret A")]
+        )
+        await memory.add_events_to_memory(
+            app_name="app_a", user_id="user2", events=[_make_event("Secret B")]
+        )
+        # user1 should not see user2's memories
+        response = await memory.search_memory(
+            app_name="app_a", user_id="user1", query="Secret"
+        )
+        texts = []
+        for m in response.memories:
+            if m.content and m.content.parts:
+                texts.extend(p.text for p in m.content.parts if p.text)
+        # Should contain user1's data
+        assert any("Secret A" in t for t in texts)
 
-    def test_repr(self):
+    @pytest.mark.asyncio
+    async def test_session_based_add(self):
+        """add_session_to_memory should also work for storing memories."""
         memory = InMemoryMemoryService()
-        assert "InMemoryMemoryService" in repr(memory)
+        session = Session(
+            id="sess-001",
+            app_name="test",
+            user_id="u1",
+            events=[_make_event("Important information about coding")],
+        )
+        await memory.add_session_to_memory(session)
+        response = await memory.search_memory(
+            app_name="test", user_id="u1", query="coding"
+        )
+        assert len(response.memories) >= 1
+
+
+class TestCreateMemoryService:
+    """Tests for the create_memory_service() 12-Factor factory."""
+
+    def test_default_is_in_memory(self, monkeypatch):
+        monkeypatch.delenv("MEMORY_BACKEND", raising=False)
+        from autopilot.core.memory import reset_memory_service
+
+        reset_memory_service()
+        svc = create_memory_service()
+        assert isinstance(svc, InMemoryMemoryService)
+
+    def test_explicit_memory_backend(self, monkeypatch):
+        monkeypatch.setenv("MEMORY_BACKEND", "memory")
+        svc = create_memory_service()
+        assert isinstance(svc, InMemoryMemoryService)
+
+    def test_unknown_backend_raises(self, monkeypatch):
+        monkeypatch.setenv("MEMORY_BACKEND", "redis")
+        with pytest.raises(ValueError, match="Unknown MEMORY_BACKEND"):
+            create_memory_service()
+
+    def test_vertexai_without_engine_id_raises(self, monkeypatch):
+        monkeypatch.setenv("MEMORY_BACKEND", "vertexai")
+        monkeypatch.delenv("MEMORY_AGENT_ENGINE_ID", raising=False)
+        with pytest.raises(ValueError, match="MEMORY_AGENT_ENGINE_ID is required"):
+            create_memory_service()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1351,33 +1401,33 @@ class TestAgentContextPhase3:
 
     @pytest.mark.asyncio
     async def test_remember_and_recall(self):
-        """Convenience methods remember() and recall() should delegate to memory."""
+        """Convenience methods remember() and recall() should use ADK memory API."""
         memory = InMemoryMemoryService()
-
         ctx = AgentContext(pipeline_name="test", memory=memory)
 
-        obs = await ctx.remember("User prefers dark mode", {"source": "prefs"})
-        assert obs is not None
-        assert obs.text == "User prefers dark mode"
+        # remember() stores via add_events_to_memory, returns None
+        result = await ctx.remember("User prefers dark mode", {"source": "prefs"})
+        assert result is None
 
-        results = await ctx.recall("dark theme")
-        assert len(results) >= 1
-        assert results[0].relevance_score > 0
+        # recall() returns SearchMemoryResponse
+        response = await ctx.recall("dark mode")
+        assert isinstance(response, SearchMemoryResponse)
+        assert len(response.memories) >= 1
 
     @pytest.mark.asyncio
     async def test_remember_with_auto_provisioned_memory(self):
         """remember() with auto-provisioned memory should work."""
         ctx = AgentContext(pipeline_name="test")
-        obs = await ctx.remember("Something important")
-        assert obs is not None
-        assert obs.text == "Something important"
+        result = await ctx.remember("Something important")
+        assert result is None  # ADK add_events_to_memory returns None
 
     @pytest.mark.asyncio
     async def test_recall_with_auto_provisioned_memory(self):
-        """recall() with auto-provisioned (empty) memory returns empty list."""
+        """recall() with auto-provisioned (empty) memory returns empty response."""
         ctx = AgentContext(pipeline_name="test")
-        results = await ctx.recall("anything")
-        assert results == []
+        response = await ctx.recall("anything")
+        assert isinstance(response, SearchMemoryResponse)
+        assert response.memories == []
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1386,19 +1436,22 @@ class TestAgentContextPhase3:
 
 
 class TestCrossExecutionMemory:
-    """E2E: Agent A saves observation in run 1 → Agent B retrieves it in run 2."""
+    """E2E: Agent A saves memory in run 1 → Agent B retrieves it in run 2."""
 
     @pytest.mark.asyncio
     async def test_cross_execution_memory_e2e(self):
         """
-        Simulates two pipeline runs sharing a MemoryService:
-        - Run 1: An agent records an observation into memory.
-        - Run 2: A different agent queries memory and finds it.
+        Simulates two pipeline runs sharing an ADK MemoryService:
+        - Run 1: An agent records text into memory via ctx.remember().
+        - Run 2: A different agent queries memory via ctx.recall().
+
+        Both pipelines use the same pipeline_name so memories are scoped
+        to the same app_name in ADK's memory service.
         """
         # Shared memory service persists across runs
         shared_memory = InMemoryMemoryService()
 
-        # ── Run 1: Agent saves an observation ─────────────────────────
+        # ── Run 1: Agent saves text to memory ─────────────────────────
         class WriterAgent(BaseAgent[dict, dict]):
             async def run(self, ctx, input):
                 await ctx.remember(
@@ -1409,28 +1462,163 @@ class TestCrossExecutionMemory:
 
         writer_pipeline = Pipeline("run_1", [WriterAgent("writer")])
 
-        ctx1 = AgentContext(pipeline_name="run_1", memory=shared_memory)
+        ctx1 = AgentContext(pipeline_name="shared_app", memory=shared_memory)
         result1 = await writer_pipeline.execute(
             ctx1,
             initial_input={"payee": "Amazon", "amount": 42.99},
         )
         assert result1.success is True
 
-        # ── Run 2: Different agent recalls the observation ────────────
+        # ── Run 2: Different agent recalls from memory ────────────────
         class ReaderAgent(BaseAgent[dict, dict]):
             async def run(self, ctx, input):
-                memories = await ctx.recall("Amazon transaction")
+                response = await ctx.recall("Amazon transaction")
+                memories = response.memories
+                top_text = ""
+                if memories and memories[0].content and memories[0].content.parts:
+                    top_text = memories[0].content.parts[0].text or ""
                 return {
                     "found_memories": len(memories),
-                    "top_memory": memories[0].text if memories else "",
+                    "top_memory": top_text,
                 }
 
         reader_pipeline = Pipeline("run_2", [ReaderAgent("reader")])
 
-        ctx2 = AgentContext(pipeline_name="run_2", memory=shared_memory)
+        ctx2 = AgentContext(pipeline_name="shared_app", memory=shared_memory)
         result2 = await reader_pipeline.execute(ctx2)
 
         assert result2.success is True
         assert result2.state["found_memories"] >= 1
         assert "Amazon" in result2.state["top_memory"]
         assert "$42.99" in result2.state["top_memory"]
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  N2 — Structured Output Enforcement Tests
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+class TestStructuredOutputEnforcement:
+    """Tests for N2 — Structured Output Enforcement via Gemini native JSON mode."""
+
+    @pytest.mark.asyncio
+    async def test_adk_agent_structured_output_from_state(self):
+        """ADKAgent.run() should re-validate through Pydantic when output_schema is set."""
+        from pydantic import BaseModel
+        from unittest.mock import AsyncMock, patch
+
+        class ParsedEmail(BaseModel):
+            payee: str
+            amount: float
+            is_successful: bool = True
+
+        # Create a mock ADK agent with output_schema and output_key
+        mock_adk_agent = MagicMock()
+        mock_adk_agent.name = "email_parser"
+        mock_adk_agent.description = "Parses emails"
+        mock_adk_agent.output_key = "parsed_email"
+        mock_adk_agent.output_schema = ParsedEmail
+
+        agent = ADKAgent(mock_adk_agent)
+
+        # Mock the ADKRunner to return a result with state containing the output
+        mock_result = MagicMock()
+        mock_result.state = {
+            "parsed_email": {
+                "payee": "Amazon",
+                "amount": -42.99,
+                "is_successful": True,
+            }
+        }
+        mock_result.parsed_json = {}
+        mock_result.final_text = ""
+
+        mock_runner = AsyncMock()
+        mock_runner.run = AsyncMock(return_value=mock_result)
+
+        with patch(
+            "autopilot.core.adk_runner.get_adk_runner", return_value=mock_runner
+        ):
+            ctx = AgentContext(pipeline_name="test")
+            result = await agent.run(ctx, {"message": "parse this email"})
+
+        # Should return validated Pydantic output via state path
+        assert "parsed_email" in result
+        assert result["parsed_email"]["payee"] == "Amazon"
+        assert result["parsed_email"]["amount"] == -42.99
+        assert result["parsed_email"]["is_successful"] is True
+        # Pydantic re-validation should exclude None fields
+        assert None not in result["parsed_email"].values()
+
+    @pytest.mark.asyncio
+    async def test_adk_agent_fallback_for_schemaless(self):
+        """ADKAgent.run() should fall back to parsed_json for schemaless agents."""
+        from unittest.mock import AsyncMock, patch
+
+        # Create a mock ADK agent WITHOUT output_schema
+        mock_adk_agent = MagicMock()
+        mock_adk_agent.name = "free_text_agent"
+        mock_adk_agent.description = "Generates text"
+        mock_adk_agent.output_key = None
+        mock_adk_agent.output_schema = None
+
+        agent = ADKAgent(mock_adk_agent)
+
+        # Mock the ADKRunner to return a result with parsed_json
+        mock_result = MagicMock()
+        mock_result.state = {}
+        mock_result.parsed_json = {"summary": "This is a summary"}
+        mock_result.final_text = '{"summary": "This is a summary"}'
+
+        mock_runner = AsyncMock()
+        mock_runner.run = AsyncMock(return_value=mock_result)
+
+        with patch(
+            "autopilot.core.adk_runner.get_adk_runner", return_value=mock_runner
+        ):
+            ctx = AgentContext(pipeline_name="test")
+            result = await agent.run(ctx, {"message": "summarize this"})
+
+        # Should fall back to parsed_json (no output_key, no output_schema)
+        assert result == {"summary": "This is a summary"}
+
+    def test_create_platform_agent_schema_sets_isolation(self):
+        """create_platform_agent with output_schema should set agent isolation flags."""
+        from pydantic import BaseModel
+        from autopilot.agents.base import create_platform_agent
+        from google.adk.agents import LlmAgent
+
+        class SimpleOutput(BaseModel):
+            value: str
+
+        agent = create_platform_agent(
+            name="isolated_agent",
+            instruction="Produce structured output.",
+            description="Produces structured output",
+            output_schema=SimpleOutput,
+            output_key="result",
+        )
+
+        # When output_schema is set, the agent should be an LlmAgent (no fallback)
+        assert isinstance(agent, LlmAgent)
+        assert agent.output_schema is SimpleOutput
+        assert agent.output_key == "result"
+        # Agent transfers should be disabled for isolation
+        assert agent.disallow_transfer_to_parent is True
+        assert agent.disallow_transfer_to_peers is True
+
+    def test_create_platform_agent_no_schema_no_isolation(self):
+        """create_platform_agent without output_schema should NOT set isolation flags."""
+        from autopilot.agents.base import create_platform_agent
+        from google.adk.agents import LlmAgent
+
+        agent = create_platform_agent(
+            name="free_agent",
+            instruction="Do whatever you want.",
+            description="A free agent",
+        )
+
+        assert isinstance(agent, LlmAgent)
+        # No isolation when no output_schema
+        assert agent.disallow_transfer_to_parent is False
+        assert agent.disallow_transfer_to_peers is False

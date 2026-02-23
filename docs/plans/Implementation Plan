@@ -161,24 +161,41 @@ Google ADK's native `SessionService` uses `Session` objects with `id`, `app_name
 
 ---
 
-### A2. Memory Service — Should Use Vertex AI or `google.adk.memory`
+### ✅ A2. Memory Service — ADK-Native Alignment — DONE
 
-Your `InMemoryMemoryService` implements TF-IDF from scratch (pure Python, zero deps). While elegant, this is not production-grade for embeddings.
+Eliminated all custom memory abstractions (389 lines → 90 lines of ADK re-exports). Replaced `Observation`, custom `BaseMemoryService`, TF-IDF `InMemoryMemoryService`, and `ChromaMemoryService` with pure ADK re-exports + `create_memory_service()` factory. Removed `chromadb` dependency (~200MB savings).
 
-**Current**: TF-IDF + cosine similarity (works for dev/test)
-**Edge Standard**: Google ADK supports `VertexAiRagMemoryService` for production
+**Files changed:**
 
-**Recommendation**:
+- `autopilot/core/memory.py` — Replaced 389 lines with ADK re-exports + 12-Factor factory
+- `autopilot/core/context.py` — `remember()` → `add_events_to_memory()`, `recall()` → `search_memory()`
+- `autopilot/core/adk_runner.py` — Critical fix: passes `memory_service` to ADK `Runner`
+- `autopilot/core/__init__.py` — Replaced `Observation` with `MemoryEntry`, `SearchMemoryResponse`, `create_memory_service`
+- `pyproject.toml` — Removed `chromadb>=0.4.0`
+- `.env.example` — Added `MEMORY_BACKEND`, `MEMORY_AGENT_ENGINE_ID` docs
+- `Dockerfile` — Added `MEMORY_BACKEND`, `MEMORY_AGENT_ENGINE_ID` to env docs
+- `docs/ARCHITECTURE.md` — Updated memory section with backend selection table & ADK types
+- `tests/autopilot/test_core.py` — Rewrote all memory tests (14 tests, ADK-native API)
 
-- Keep `InMemoryMemoryService` for dev/test ✅
-- Replace `ChromaMemoryService` with `VertexAiRagMemoryService` for prod (aligns with Google Cloud ecosystem, zero infra to manage)
-- Or use `google.genai.embed_content()` for embeddings + Firestore for storage (fully serverless)
+**Deploy:** `MEMORY_BACKEND` defaults to `memory` locally/CI. Production sets `vertexai` via `--set-env-vars MEMORY_BACKEND=vertexai,MEMORY_AGENT_ENGINE_ID=<id>`. 443 total tests passing.
 
 ---
 
 ### ✅ A3. AgentBus — Cloud-Native Pub/Sub Backend — DONE
 
-Implemented `CloudPubSubEventBus` (`autopilot/core/bus_pubsub.py`) backed by Google Cloud Pub/Sub. Added `create_event_bus()` factory with `EVENTBUS_BACKEND` env var selection. In-memory `EventBus` remains for dev/test (12-Factor best practice). Hybrid dispatch: local zero-latency + Pub/Sub persistence/cross-instance. 24 new tests, 359 total passing.
+Implemented `CloudPubSubEventBus` (`autopilot/core/bus_pubsub.py`) backed by Google Cloud Pub/Sub with hybrid dispatch (local zero-latency + Pub/Sub persistence/cross-instance). Added `create_event_bus()` factory with `EVENTBUS_BACKEND` env var selection and startup logging (`event_bus_backend_selected`). In-memory `EventBus` remains for dev/test (12-Factor best practice).
+
+**Files changed:**
+
+- `autopilot/core/bus_pubsub.py` — NEW: `CloudPubSubEventBus(EventBusProtocol)`
+- `autopilot/core/bus.py` — `create_event_bus()` factory, `get_event_bus()` → `EventBusProtocol`, cleaned `RedisStreamEventBus` dead ref
+- `autopilot/core/__init__.py` — exports `create_event_bus`
+- `pyproject.toml` — `google-cloud-pubsub>=2.20.0`
+- `tests/autopilot/test_bus_pubsub.py` — NEW: 24 tests (all Pub/Sub mocked)
+- `.env.example` — documented `EVENTBUS_BACKEND`
+- `Dockerfile` — documented `EVENTBUS_BACKEND` in env vars section
+
+**Deploy:** `EVENTBUS_BACKEND` defaults to `memory` locally/CI. Production sets `pubsub` explicitly via `--set-env-vars EVENTBUS_BACKEND=pubsub` at deploy time. 24 new tests, 359 total passing.
 
 ---
 
@@ -237,72 +254,85 @@ The app claims `v5.0.0` but there's no `CHANGELOG.md` or release strategy. For a
 
 ## ✨ ADD — World-Class Missing Capabilities
 
-### N1. A2A Protocol Server Implementation
+### ✅ N1. A2A Protocol Server Implementation — DONE
 
-ARCHITECTURE.md references A2A (Agent-to-Agent) Protocol extensively via manifests and agent cards, but there's **no A2A server endpoint**. The platform can't be discovered or invoked by external agents.
+ARCHITECTURE.md references A2A (Agent-to-Agent) Protocol extensively via manifests and agent cards, but there was **no A2A server endpoint**. The platform couldn't be discovered or invoked by external agents.
 
-**What ADK Supports**: The Google ADK A2A specification defines:
+**Implemented**: Using the official `a2a-sdk` (Google's A2A Python SDK), the platform now exposes:
 
-- `/.well-known/agent.json` — agent card discovery
-- `POST /a2a/tasks` — task submission
+- `GET /.well-known/agent-card.json` — agent card discovery (unauthenticated, A2A spec)
+- `POST /a2a` — JSON-RPC endpoint (`message/send`, `message/stream`, `tasks/get`)
+- Each registered workflow is exposed as an A2A Skill
 - Task lifecycle: `submitted → working → completed`
 
-**Recommendation**: Implement a thin A2A server router that maps incoming A2A tasks to workflow executions. This makes Autopilot a **first-class citizen** in multi-agent ecosystems.
+**Files**: `autopilot/api/a2a/` (4 files), `tests/test_a2a.py` (23 tests)
+
+> [!NOTE]
+> **COMPLETED** — Full A2A Protocol server with agent card discovery and JSON-RPC task endpoint. All workflows auto-exposed as A2A Skills.
 
 ---
 
-### N2. Structured Output Enforcement (Gemini Native)
+### ✅ N2. Structured Output Enforcement (Gemini Native) — DONE
 
-Gemini models natively support `response_schema` for structured JSON output. Your `ADKAgent` uses `output_key` + state-priority extraction, which is correct but could be **reinforced** with Gemini's native JSON mode.
+ADK natively handles `output_schema` → `response_schema` + `response_mime_type=application/json`. Removed dead function_call extraction code from `adk_runner.py`, tightened `ADKAgent.run()` with Pydantic re-validation, added agent isolation flags in `create_platform_agent`. 4 new tests, 386 total pass.
 
-**Recommendation**: In `create_platform_agent`, when `output_schema` is provided (Pydantic model), auto-set `generate_content_config.response_schema` to the model's JSON schema. This eliminates all text-parsing fallback paths.
-
-```python
-agent = create_platform_agent(
-    name="parser",
-    instruction="...",
-    output_schema=ParsedEmail,  # NEW: auto-converted to response_schema
-)
-```
+> [!NOTE]
+> **COMPLETED** — Leveraged ADK native structured output. Dead code removed, Pydantic re-validation added, agent isolation flags set.
 
 ---
 
-### N3. Gemini Context Caching (Cost Optimization)
+### ✅ N3. Gemini Context Caching (Cost Optimization) — DONE
 
-For agents that process long, repeated prompts (e.g., categorizer with 50+ categories), Gemini's **context caching** can reduce costs by 75%.
+Implemented per-agent context caching using ADK's native `ContextCacheConfig`. Agents opt in via `create_platform_agent(cache_context=True)`. When enabled, `ADKRunner` wraps the agent in `App(context_cache_config=...)` so ADK caches system instructions + tool schemas server-side (up to 75% cost reduction). Non-cached agents use the standard `Runner` path — zero behavior change.
 
-**Recommendation**: Add `cached_content` support to `create_platform_agent`. Cache long system instructions + static tool schemas.
+**Files:**
 
----
+- `autopilot/agents/context_cache.py` — NEW: `create_context_cache_config()` factory, `has_cache_context()`, `PLATFORM_CACHE_CONTEXT_ATTR`
+- `autopilot/agents/base.py` — `cache_context` param in `create_platform_agent`
+- `autopilot/core/adk_runner.py` — Conditional `App` wrapper for cache-enabled agents
+- `tests/autopilot/test_context_cache.py` — NEW: 12 tests
+- `.env.example`, `Dockerfile`, `ARCHITECTURE.md` — documented env vars
 
-### N4. Firestore-Backed Session Service (Serverless)
+**Config (12-Factor):** `CONTEXT_CACHE_MIN_TOKENS` (2048), `CONTEXT_CACHE_TTL_SECONDS` (1800), `CONTEXT_CACHE_INTERVALS` (10).
 
-The platform now uses ADK's `BaseSessionService` ABC (A1 complete). The default `InMemorySessionService` works for dev/test but loses state across container restarts.
-
-**Recommendation**: Implement `FirestoreSessionService` as an ADK-native `BaseSessionService` backend — native GCP, serverless, auto-scales, pay-per-use, perfect for scale-to-zero architectures. Aligns with the "edge, no infra" philosophy.
-
----
-
-### N5. Artifact Store for Pipeline Runs
-
-Pipelines produce results but there's no structured way to store/retrieve artifacts (parsed emails, transaction JSONs, categorization results) across runs.
-
-**Recommendation**: Add `ArtifactStore` backed by Cloud Storage:
-
-```python
-await ctx.save_artifact("parsed_email.json", parsed_data)
-artifact = await ctx.load_artifact("parsed_email.json", run_id="prev-run-123")
-```
-
-This enables cross-run debugging, audit trails, and replay capabilities.
+> [!NOTE]
+> **COMPLETED** — Per-agent context caching with ADK-native `ContextCacheConfig`. 442 tests passing.
 
 ---
 
-### N6. Platform-Level Rate Limiting on LLM Calls
+### ✅ N4. Firestore-Backed Session Service (Serverless) — DONE
 
-The `ToolCallbackManager` has `create_rate_limit_callback` for tools, but there's no equivalent for **LLM model calls**. Gemini has strict QPM limits.
+Implemented `FirestoreSessionService` as an ADK-native `BaseSessionService` backend. Full implementation:
 
-**Recommendation**: Add a `ModelRateLimiter` in `create_platform_agent` that applies token-bucket rate limiting per model, preventing 429 cascades across concurrent pipeline runs.
+- **`autopilot/core/session_firestore.py`** — `FirestoreSessionService(BaseSessionService)` with CRUD, transactional `append_event`, app/user/session state deltas, `from_env()` classmethod.
+- **`autopilot/core/session.py`** — `create_session_service()` factory (12-Factor: `SESSION_BACKEND` env var, default `memory`, production `firestore`).
+- **`autopilot/core/context.py`** — `AgentContext` uses factory instead of hardcoded `InMemorySessionService`.
+- **Deploy config** — `SESSION_BACKEND=firestore` added to `ci.yml` and `deploy_to_cloud_run.md`.
+- **GCP provisioned** — Firestore API enabled, Native mode database created in `us-central1` (free tier). Single `(default)` database serves all workflows via `app_name` partitioning.
+- **Tests** — 19 unit tests with fully mocked Firestore (zero external deps).
+
+---
+
+### N5. Artifact Store for Pipeline Runs ✅ DONE
+
+ADK-native versioned artifact storage with 12-Factor factory. Enables cross-run debugging, audit trails, and replay:
+
+- **Backends**: `InMemoryArtifactService` (dev/test) / `GcsArtifactService` (production via `ARTIFACT_BACKEND=gcs`)
+- **Context methods**: `ctx.save_artifact()`, `ctx.load_artifact(run_id=)`, `ctx.list_artifacts()`
+- **ADK-native types**: `types.Part` only — zero custom wrapping
+
+Files: `autopilot/core/artifact.py` (new), `autopilot/core/context.py`, `autopilot/core/adk_runner.py`, `autopilot/core/__init__.py`, `autopilot/errors.py` (`ArtifactServiceError`), `ARCHITECTURE.md` updated.
+
+---
+
+### N6. Platform-Level Rate Limiting on LLM Calls ✅ DONE
+
+Dual-layer rate limiting, fully aligned with Google ADK:
+
+- **Layer 1 (Reactive)**: ADK-native `HttpRetryOptions` injected into `GenerateContentConfig` — auto-retries transient 429s. Always-on.
+- **Layer 2 (Proactive)**: Token-bucket `ModelRateLimiter` via `before_model_callback` — prevents 429s by throttling QPM locally. Opt-in via `MODEL_RATE_LIMIT_QPM` env var.
+
+Files: `autopilot/agents/rate_limiter.py` (new), `autopilot/agents/base.py`, `autopilot/errors.py` (`ModelRateLimitError`), `ARCHITECTURE.md` updated.
 
 ---
 
@@ -331,20 +361,20 @@ The `ToolCallbackManager` has `create_rate_limit_callback` for tools, but there'
 
 ### Medium-Term (Month 1) — Edge Differentiation
 
-| #   | Action                                      | Type    | Effort   |
-| --- | ------------------------------------------- | ------- | -------- |
-| A1  | ~~Align session with ADK SessionService~~   | ✅ DONE | —        |
-| A3  | ~~Cloud-native AgentBus (Pub/Sub backend)~~ | ✅ DONE | —        |
-| N1  | A2A Protocol server                         | ADD     | 2-3 days |
-| N2  | Structured output enforcement               | ADD     | 1 day    |
-| N4  | FirestoreSessionService (ADK ABC impl)      | ADD     | 1-2 days |
-| N6  | Model rate limiter                          | ADD     | 1 day    |
+| #   | Action                                      | Type    | Effort |
+| --- | ------------------------------------------- | ------- | ------ |
+| A1  | ~~Align session with ADK SessionService~~   | ✅ DONE | —      |
+| A3  | ~~Cloud-native AgentBus (Pub/Sub backend)~~ | ✅ DONE | —      |
+| N1  | ~~A2A Protocol server~~                     | ✅ DONE | —      |
+| N2  | ~~Structured output enforcement~~           | ✅ DONE | —      |
+| N4  | ~~FirestoreSessionService (ADK ABC impl)~~  | ✅ DONE | —      |
+| N6  | ~~Model rate limiter~~                      | ✅ DONE | —      |
 
 ### Long-Term (Quarter) — World-Class Edge
 
-| #   | Action                     | Type   | Effort   |
-| --- | -------------------------- | ------ | -------- |
-| A2  | Vertex AI RAG Memory       | ADJUST | 2-3 days |
-| N3  | Gemini context caching     | ADD    | 1-2 days |
-| N5  | Artifact Store             | ADD    | 2-3 days |
-| A7  | Auto-version from git tags | ADJUST | 1h       |
+| #   | Action                        | Type    | Effort |
+| --- | ----------------------------- | ------- | ------ |
+| A2  | ~~ADK-native Memory Service~~ | ✅ DONE | —      |
+| N3  | ~~Gemini context caching~~    | ✅ DONE | —      |
+| N5  | ~~Artifact Store~~            | ✅ DONE | —      |
+| A7  | Auto-version from git tags    | ADJUST  | 1h     |

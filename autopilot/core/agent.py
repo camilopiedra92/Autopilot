@@ -278,6 +278,18 @@ class ADKAgent(BaseAgent[dict, dict]):
     Bridges the ADK's Runner/Session model into our typed pipeline.
     The wrapped agent is run via ADKRunner and its output
     is returned as a dict ready for state merging.
+
+    Output extraction strategy (state-priority):
+
+    1. **Structured output (output_schema set)**: ADK activates Gemini native
+       JSON mode (``response_schema`` + ``response_mime_type=application/json``),
+       validates the response via ``model_validate_json()``, and stores the
+       validated dict in ``session.state[output_key]``. This path is lossless —
+       zero text parsing, zero regex fallback.
+
+    2. **Schemaless agents (no output_schema)**: Falls back to
+       ``result.parsed_json`` (regex-extracted JSON from final text). This is
+       only used by agents that produce unstructured text output.
     """
 
     def __init__(self, adk_agent: Any, *, name: str | None = None):
@@ -313,14 +325,24 @@ class ADKAgent(BaseAgent[dict, dict]):
         )
 
         output_key = getattr(self._adk_agent, "output_key", None)
+        output_schema = getattr(self._adk_agent, "output_schema", None)
 
-        # Strategy: prefer ADK session state (canonical for output_key),
-        # fall back to text-parsed JSON.  ADK natively stores structured
-        # output in state[output_key] when output_schema is used, which
-        # is far more reliable than regex-parsing the response text.
+        # Path 1 (canonical): ADK session state — guaranteed structured when
+        # output_schema is set (ADK validates via model_validate_json).
         if output_key and output_key in result.state:
-            return {output_key: result.state[output_key]}
+            value = result.state[output_key]
 
+            # Defense-in-depth: re-validate through Pydantic model if available.
+            # ADK already validates, but this catches any edge cases where state
+            # is mutated between ADK validation and our extraction.
+            if output_schema is not None and isinstance(value, dict):
+                value = output_schema.model_validate(value).model_dump(
+                    exclude_none=True
+                )
+
+            return {output_key: value}
+
+        # Path 2 (fallback): text-parsed JSON for schemaless agents only.
         base_output = result.parsed_json or {"output": result.final_text}
         if output_key:
             return {output_key: base_output}

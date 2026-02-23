@@ -32,7 +32,7 @@ We build **World-Class, Edge-First, Agentic Systems**.
 ```python
 from autopilot.agents.base import create_platform_agent
 
-# CORRECT
+# CORRECT — Standard agent
 agent = create_platform_agent(
     name="my_agent",
     instruction="Do the thing",
@@ -40,6 +40,16 @@ agent = create_platform_agent(
     fallback_model="gemini-2.0-pro-exp",  # Platform handles resilience automatically
     tools=[my_tool]
 )
+
+# CORRECT — Structured output agent (Gemini native JSON mode)
+agent = create_platform_agent(
+    name="email_parser",
+    instruction="Parse the bank email into structured data.",
+    output_schema=ParsedEmail,  # Activates response_schema + response_mime_type
+    output_key="parsed_email",  # ADK stores validated output in session state
+)
+# → ADK sets response_schema=ParsedEmail, response_mime_type=application/json
+# → Agent transfers are auto-disabled (full isolation)
 
 # WRONG
 agent = LlmAgent(name="my_agent", ...)  # ❌ PROHIBITED
@@ -120,6 +130,73 @@ agent = create_platform_agent(
 > **Workflow guards** = domain-specific, depend on workflow model fields. Keep them in `<workflow>/agents/guardrails.py`.
 > Never duplicate platform guard logic in a workflow.
 
+### Model Rate Limiter (`autopilot.agents.rate_limiter`)
+
+LLM model calls are rate-limited via a **dual-layer strategy**, fully aligned with Google ADK:
+
+| Layer       | Type                  | Mechanism                                     | Purpose                                                        |
+| ----------- | --------------------- | --------------------------------------------- | -------------------------------------------------------------- |
+| **Layer 1** | Reactive (ADK‑native) | `HttpRetryOptions` in `GenerateContentConfig` | Auto-retries transient 429s from the Gemini API                |
+| **Layer 2** | Proactive (platform)  | `before_model_callback` + token-bucket        | Prevents 429s by throttling QPM locally before hitting the API |
+
+**Layer 1** is always-on and injected automatically by `create_platform_agent`. **Layer 2** is opt-in via the `MODEL_RATE_LIMIT_QPM` environment variable.
+
+**Configuration (12-Factor):**
+
+| Variable               | Default        | Purpose                                                    |
+| ---------------------- | -------------- | ---------------------------------------------------------- |
+| `MODEL_RATE_LIMIT_QPM` | `0` (disabled) | Queries-per-minute per model. `0` = no proactive limiting. |
+
+**Architecture:**
+
+- Each model ID gets an independent token bucket (`_TokenBucket`).
+- Uses **back-pressure** (`asyncio.sleep`) — calls wait for their turn instead of failing.
+- `asyncio.Lock` per bucket — safe for single-worker asyncio (Cloud Run optimal).
+- Fires **first** in the `before_model_callback` chain (before guardrails and logging).
+
+```python
+# Production deploy: enable proactive rate limiting
+gcloud run deploy autopilot --set-env-vars MODEL_RATE_LIMIT_QPM=1500
+```
+
+### Context Caching (`autopilot.agents.context_cache`)
+
+Gemini supports **context caching** — pre-caching system instructions and tool schemas server-side. Subsequent requests skip re-processing, reducing both latency and token costs (up to 75% savings).
+
+Context caching is a **per-agent opt-in** feature via `create_platform_agent(cache_context=True)`. Only agents with long, static instructions benefit from caching (e.g., categorizer with 50+ category rules). Short/dynamic agents should NOT cache.
+
+```python
+# ✅ CORRECT — Agent with long static instructions opts in
+agent = create_platform_agent(
+    name="categorizer",
+    instruction=LONG_CATEGORIZER_INSTRUCTION,  # 50+ categories
+    cache_context=True,  # Enables Gemini context caching
+    output_schema=CategorizedTransaction,
+    tools=["ynab.get_categories_string"],
+)
+
+# ✅ CORRECT — Agent with short/dynamic instructions does NOT cache (default)
+agent = create_platform_agent(
+    name="email_parser",
+    instruction="Parse the email...",
+    # cache_context defaults to False — no caching overhead
+)
+```
+
+**How it works:**
+
+1. `create_platform_agent(cache_context=True)` sets a marker attribute on the `LlmAgent`
+2. `ADKRunner` checks the marker → if set, wraps the agent in `App(context_cache_config=...)` → ADK caches automatically
+3. If not set → uses standard `Runner(app_name=, agent=)` → zero caching overhead
+
+**Configuration (12-Factor):**
+
+| Variable                    | Default | Purpose                       |
+| --------------------------- | ------- | ----------------------------- |
+| `CONTEXT_CACHE_MIN_TOKENS`  | `2048`  | Min tokens to trigger caching |
+| `CONTEXT_CACHE_TTL_SECONDS` | `1800`  | Cache TTL (30 min)            |
+| `CONTEXT_CACHE_INTERVALS`   | `10`    | Max uses before refresh       |
+
 ## 3. Core Primitives (`autopilot.core`)
 
 The platform provides typed, observable primitives for building agentic workflows:
@@ -145,10 +222,14 @@ The platform provides typed, observable primitives for building agentic workflow
 | `BaseSessionService`      | ADK-native ABC — re-exported from `google.adk.sessions` (create/get/list/delete) |
 | `InMemorySessionService`  | ADK-native dict-backed session (auto-provisioned in `AgentContext`)              |
 | `Session`                 | ADK Pydantic model — `id`, `app_name`, `user_id`, `state`, `events`              |
-| `BaseMemoryService`       | ABC for long-term semantic memory across executions                              |
-| `InMemoryMemoryService`   | TF-IDF + cosine similarity memory (zero external deps)                           |
-| `ChromaMemoryService`     | Persistent vector DB memory via ChromaDB                                         |
-| `Observation`             | A single memory record with text, metadata, timestamp, and relevance             |
+| `BaseMemoryService`       | ADK ABC for long-term memory (re-exported from `google.adk.memory`)              |
+| `InMemoryMemoryService`   | ADK keyword-matching memory (dev/test, default)                                  |
+| `MemoryEntry`             | ADK Pydantic model for a single memory record (content, metadata, timestamp)     |
+| `SearchMemoryResponse`    | ADK response model from `search_memory()` containing `list[MemoryEntry]`         |
+| `BaseArtifactService`     | ADK ABC for versioned artifact storage (re-exported from `google.adk.artifacts`) |
+| `InMemoryArtifactService` | ADK in-memory artifact store (dev/test, default)                                 |
+| `GcsArtifactService`      | Google Cloud Storage artifact store (production, `ARTIFACT_BACKEND=gcs`)         |
+| `ArtifactVersion`         | ADK Pydantic model — `version`, `canonical_uri`, `custom_metadata`, `mime_type`  |
 | `ToolRegistry`            | Centralized tool registry with `@tool` decorator and lazy connector resolution   |
 | `ToolInfo`                | Pydantic metadata model for registered tools (incl. `requires_context`)          |
 | `ToolCallbackManager`     | Before/after lifecycle hooks for tool invocations                                |
@@ -167,15 +248,34 @@ The platform provides typed, observable primitives for building agentic workflow
 | `load_workflow(path)`     | Reads YAML → validates → resolves refs → returns `Pipeline` or `DAGRunner`       |
 | `load_workflow_from_dict` | Same as above but from a pre-parsed dict (useful in tests)                       |
 
-### ADKAgent Output Extraction
+### ADKAgent Output Extraction & Structured Output Enforcement
 
-`ADKAgent` bridges Google ADK `LlmAgent` into the platform's `BaseAgent` contract. When `output_key` is set on the agent, `ADKAgent.run()` uses **state-priority extraction**:
+`ADKAgent` bridges Google ADK `LlmAgent` into the platform's `BaseAgent` contract. Output extraction follows a **state-priority** strategy with two distinct paths:
 
-1. **ADK Session State** (`result.state[output_key]`) — checked first, always reliable
-2. **Text Parsing** (`result.parsed_json`) — fallback only when state is empty
+#### Path 1 — Structured Output (with `output_schema`)
+
+When `output_schema` is set on the agent, ADK activates **Gemini native JSON mode**:
+
+1. ADK calls `llm_request.set_output_schema()` → sets `response_schema` + `response_mime_type=application/json` on `GenerateContentConfig`
+2. Gemini produces **constrained JSON** conforming to the schema — zero free-text, zero hallucinated fields
+3. ADK validates via `model_validate_json()` → stores validated dict in `session.state[output_key]`
+4. `ADKAgent.run()` reads from state → re-validates through Pydantic (defense-in-depth) → returns guaranteed-structured dict
+
+This path is **lossless** — no regex parsing, no text extraction, no function call decoding.
+
+> [!IMPORTANT]
+> When `output_schema` is set, `create_platform_agent` also disables agent transfers (`disallow_transfer_to_parent=True`, `disallow_transfer_to_peers=True`) for full isolation. ADK natively disables tools in this mode.
+
+#### Path 2 — Schemaless Fallback (without `output_schema`)
+
+For agents that produce free-text output:
+
+1. `ADKRunner` extracts `final_text` from the event stream
+2. `extract_json(final_text)` attempts regex-based JSON extraction as a **last-resort fallback**
+3. `ADKAgent.run()` returns `result.parsed_json` or `{"output": result.final_text}`
 
 > [!WARNING]
-> Never rely on text parsing (`parsed_json`) as the primary output path. ADK's native `output_key` writes structured data directly into session state, which is lossless. Text parsing is fragile — it can lose fields (e.g., `category_id`) when the LLM response contains tool calls alongside text.
+> The schemaless path uses regex-based JSON extraction (`json_utils.extract_json()`) which is inherently fragile. **Always prefer `output_schema`** for agents that produce structured data. Reserve the schemaless path only for agents that genuinely produce free-text output.
 
 ### Connector Bridge Wrapper Annotations
 
@@ -413,8 +513,40 @@ Every `AgentContext` includes **session** (ADK `Session` object) and **memory** 
 
 - Session uses Google ADK's native `SessionService` contract — `create_session()`, `get_session()`, `list_sessions()`, `delete_session()`, `append_event()`.
 - `ctx.session` **is** the ADK `Session` directly — `ctx.session.state` is a plain dict, no async wrappers.
-- In development, `InMemorySessionService` is auto-provisioned. In production, implement ADK's `BaseSessionService` ABC with Firestore or another durable backend.
-- Memory defaults to `InMemoryMemoryService`. For production, swap to `ChromaMemoryService` or Vertex AI Search.
+- Session backend is selected via `SESSION_BACKEND` env var using `create_session_service()` factory. Default `InMemorySessionService` for dev/test; `FirestoreSessionService` for production.
+- Memory backend is selected via `MEMORY_BACKEND` env var using `create_memory_service()` factory. Default `InMemoryMemoryService` for dev/test; `VertexAiMemoryBankService` for production.
+
+#### Session Backend Selection (12-Factor Config-Driven)
+
+The session backend is selected via `SESSION_BACKEND` env var using `create_session_service()`. The factory logs the selected backend at startup for observability (`session_backend_selected`).
+
+| Environment    | Backend                   | `SESSION_BACKEND`                  | Why                                      |
+| -------------- | ------------------------- | ---------------------------------- | ---------------------------------------- |
+| **Unit Tests** | `InMemorySessionService`  | Unset → `memory` (default)         | Zero deps, deterministic, instant        |
+| **Local Dev**  | `InMemorySessionService`  | Unset → `memory` (default)         | Single instance — persistence irrelevant |
+| **Cloud Run**  | `FirestoreSessionService` | Set via `--set-env-vars` at deploy | Durable, serverless, scale-to-zero safe  |
+
+> [!IMPORTANT]
+> `SESSION_BACKEND` is **not** set in `.env` — it defaults to `memory` for all local/CI scenarios. Production sets it explicitly via `--set-env-vars SESSION_BACKEND=firestore` in the deploy command. This follows the same 12-Factor pattern as `EVENTBUS_BACKEND`.
+
+```python
+from autopilot.core.session import create_session_service
+
+# Singleton — reads SESSION_BACKEND env var (default: "memory")
+service = create_session_service()
+```
+
+`FirestoreSessionService` stores sessions in a hierarchical Firestore document structure:
+
+```
+autopilot_sessions/{app_name}/
+├── config/_app_state           → { state: {...} }
+└── users/{user_id}/
+    ├── config/_user_state      → { state: {...} }
+    └── sessions/{session_id}   → { state, events, last_update_time }
+```
+
+This maps directly to ADK's 3-tier state model (`app:` / `user:` / session). `append_event()` uses Firestore transactions for consistency.
 
 ```python
 from autopilot.core import AgentContext
@@ -432,9 +564,10 @@ async def run(self, ctx, input):
     session_id = ctx.session.id
     app_name = ctx.session.app_name
 
-    # Long-term memory: persist observations across executions
+    # Long-term memory: ADK's event-based API via convenience methods
     await ctx.remember("User prefers dark mode", {"agent": self.name})
-    results = await ctx.recall("theme preferences", top_k=3)
+    response = await ctx.recall("theme preferences")
+    # response.memories is a list of MemoryEntry objects
 ```
 
 **Shared memory across pipeline runs:**
@@ -443,28 +576,84 @@ async def run(self, ctx, input):
 # Inject a shared memory service to persist across executions
 shared_memory = InMemoryMemoryService()
 
-# Run 1: Agent saves
-ctx1 = AgentContext(pipeline_name="run_1", memory=shared_memory)
+# Run 1: Agent saves (same pipeline_name = same ADK app_name scope)
+ctx1 = AgentContext(pipeline_name="shared_app", memory=shared_memory)
 await pipeline.execute(ctx1, initial_input={...})
 
-# Run 2: Different agent recalls
-ctx2 = AgentContext(pipeline_name="run_2", memory=shared_memory)
-results = await ctx2.recall("previous transactions")
+# Run 2: Different agent recalls from same memory scope
+ctx2 = AgentContext(pipeline_name="shared_app", memory=shared_memory)
+response = await ctx2.recall("previous transactions")
 ```
 
-| Component              | Purpose                                                             |
-| ---------------------- | ------------------------------------------------------------------- |
-| `BaseSessionService`   | ADK ABC — re-exported from `google.adk.sessions`                    |
-| `Session`              | ADK Pydantic model (`id`, `app_name`, `user_id`, `state`, `events`) |
-| `ctx.session`          | The ADK `Session` object — `ctx.session.state` is a plain dict      |
-| `ctx.session_service`  | ADK `SessionService` — full lifecycle (create/get/list/delete)      |
-| `BaseMemoryService`    | ABC — swap with ChromaDB or Vertex AI Search for prod               |
-| `ctx.remember(text)`   | Convenience → `memory.add_observation()`                            |
-| `ctx.recall(query)`    | Convenience → `memory.search_relevant()`                            |
-| `ctx.tools`            | Access the global `ToolRegistry` from any agent                     |
-| `ctx.bus`              | Access the global `EventBus` for A2A messaging                      |
-| `ctx.publish(topic)`   | Convenience → `bus.publish()` with auto-sender                      |
-| `ctx.subscribe(topic)` | Convenience → `bus.subscribe()`                                     |
+#### Memory Backend Selection (12-Factor Config-Driven)
+
+The memory backend follows the same 12-Factor pattern as sessions and event bus:
+
+| Environment    | Backend                     | `MEMORY_BACKEND`                   | Why                                   |
+| -------------- | --------------------------- | ---------------------------------- | ------------------------------------- |
+| **Unit Tests** | `InMemoryMemoryService`     | Unset → `memory` (default)         | Zero deps, deterministic, instant     |
+| **Local Dev**  | `InMemoryMemoryService`     | Unset → `memory` (default)         | Stateless pipelines — persistence n/a |
+| **Cloud Run**  | `VertexAiMemoryBankService` | Set via `--set-env-vars` at deploy | Persistent, semantic search, managed  |
+
+> [!IMPORTANT]
+> `MEMORY_BACKEND` is **not** set in `.env` — it defaults to `memory` for all local/CI scenarios. Production sets it explicitly via `--set-env-vars MEMORY_BACKEND=vertexai,MEMORY_AGENT_ENGINE_ID=<id>` in the deploy command.
+
+```python
+from autopilot.core.memory import create_memory_service
+
+# Singleton — reads MEMORY_BACKEND env var (default: "memory")
+service = create_memory_service()
+```
+
+#### Artifact Backend Selection (12-Factor Config-Driven)
+
+The artifact backend follows the same 12-Factor pattern as sessions, memory, and event bus:
+
+| Environment    | Backend                   | `ARTIFACT_BACKEND`                 | Why                                  |
+| -------------- | ------------------------- | ---------------------------------- | ------------------------------------ |
+| **Unit Tests** | `InMemoryArtifactService` | Unset → `memory` (default)         | Zero deps, deterministic, instant    |
+| **Local Dev**  | `InMemoryArtifactService` | Unset → `memory` (default)         | Ephemeral — persistence not needed   |
+| **Cloud Run**  | `GcsArtifactService`      | Set via `--set-env-vars` at deploy | Versioned, durable, cross-run access |
+
+> [!IMPORTANT]
+> `ARTIFACT_BACKEND` is **not** set in `.env` — it defaults to `memory` for all local/CI scenarios. Production sets it explicitly via `--set-env-vars ARTIFACT_BACKEND=gcs,ARTIFACT_GCS_BUCKET=<bucket>` in the deploy command.
+
+```python
+from autopilot.core.artifact import create_artifact_service
+
+# Singleton — reads ARTIFACT_BACKEND env var (default: "memory")
+service = create_artifact_service()
+```
+
+| Component                   | Purpose                                                             |
+| --------------------------- | ------------------------------------------------------------------- |
+| `BaseSessionService`        | ADK ABC — re-exported from `google.adk.sessions`                    |
+| `InMemorySessionService`    | ADK dict-backed session (dev/test, default)                         |
+| `FirestoreSessionService`   | Durable Firestore backend (production, `SESSION_BACKEND=firestore`) |
+| `create_session_service`    | Factory — reads `SESSION_BACKEND` env var, returns correct backend  |
+| `Session`                   | ADK Pydantic model (`id`, `app_name`, `user_id`, `state`, `events`) |
+| `ctx.session`               | The ADK `Session` object — `ctx.session.state` is a plain dict      |
+| `ctx.session_service`       | ADK `SessionService` — full lifecycle (create/get/list/delete)      |
+| `BaseMemoryService`         | ADK ABC — re-exported from `google.adk.memory`                      |
+| `InMemoryMemoryService`     | ADK keyword-matching memory (dev/test, default)                     |
+| `VertexAiMemoryBankService` | Vertex AI Memory Bank (production, `MEMORY_BACKEND=vertexai`)       |
+| `create_memory_service`     | Factory — reads `MEMORY_BACKEND` env var, returns correct backend   |
+| `MemoryEntry`               | ADK Pydantic model for a memory record                              |
+| `SearchMemoryResponse`      | ADK response from `search_memory()` with `list[MemoryEntry]`        |
+| `ctx.remember(text)`        | Convenience → `memory.add_events_to_memory()`                       |
+| `ctx.recall(query)`         | Convenience → `memory.search_memory()` → `SearchMemoryResponse`     |
+| `BaseArtifactService`       | ADK ABC — re-exported from `google.adk.artifacts`                   |
+| `InMemoryArtifactService`   | ADK in-memory artifact store (dev/test, default)                    |
+| `GcsArtifactService`        | GCS artifact store (production, `ARTIFACT_BACKEND=gcs`)             |
+| `ArtifactVersion`           | ADK Pydantic model for versioned artifact metadata                  |
+| `create_artifact_service`   | Factory — reads `ARTIFACT_BACKEND` env var, returns correct backend |
+| `ctx.save_artifact(name,p)` | Convenience → `artifact_service.save_artifact()` → version `int`    |
+| `ctx.load_artifact(name)`   | Convenience → `artifact_service.load_artifact()` → `Part \| None`   |
+| `ctx.list_artifacts()`      | Convenience → `artifact_service.list_artifact_keys()` → `list[str]` |
+| `ctx.tools`                 | Access the global `ToolRegistry` from any agent                     |
+| `ctx.bus`                   | Access the global `EventBus` for A2A messaging                      |
+| `ctx.publish(topic)`        | Convenience → `bus.publish()` with auto-sender                      |
+| `ctx.subscribe(topic)`      | Convenience → `bus.subscribe()`                                     |
 
 ### Scale-to-Zero and Long-Lived Subscriptions
 
@@ -706,13 +895,17 @@ The `EventBus` provides typed, async pub/sub messaging for decoupled inter-agent
 
 #### Backend Selection (12-Factor Config-Driven)
 
-The bus backend is selected via `EVENTBUS_BACKEND` env var using `create_event_bus()`:
+The bus backend is selected via `EVENTBUS_BACKEND` env var using `create_event_bus()`. The factory logs the selected backend at startup for observability (`event_bus_backend_selected`).
 
-| Environment    | Backend               | `EVENTBUS_BACKEND` | Why                                         |
-| -------------- | --------------------- | ------------------ | ------------------------------------------- |
-| **Unit Tests** | `EventBus` (memory)   | `memory` (default) | Zero deps, deterministic, instant           |
-| **Local Dev**  | `EventBus` (memory)   | `memory` (default) | Single instance — cross-instance irrelevant |
-| **Production** | `CloudPubSubEventBus` | `pubsub`           | Persistence, cross-instance, scale-to-zero  |
+| Environment    | Backend               | `EVENTBUS_BACKEND`                           | Why                                         |
+| -------------- | --------------------- | -------------------------------------------- | ------------------------------------------- |
+| **Unit Tests** | `EventBus` (memory)   | Unset → `memory` (default)                   | Zero deps, deterministic, instant           |
+| **Local Dev**  | `EventBus` (memory)   | Unset → `memory` (default)                   | Single instance — cross-instance irrelevant |
+| **Local E2E**  | `CloudPubSubEventBus` | Inline: `EVENTBUS_BACKEND=pubsub python ...` | Test full Pub/Sub path locally              |
+| **Cloud Run**  | `CloudPubSubEventBus` | Set via `--set-env-vars` at deploy           | Persistence, cross-instance, scale-to-zero  |
+
+> [!IMPORTANT]
+> `EVENTBUS_BACKEND` is **not** set in `.env` — it defaults to `memory` for all local/CI scenarios. Production sets it explicitly via `--set-env-vars EVENTBUS_BACKEND=pubsub` in the deploy command (both CI/CD `ci.yml` and break-glass `gcloud run deploy`). This follows the same 12-Factor pattern as `GOOGLE_GENAI_USE_VERTEXAI` in ADK.
 
 ```python
 from autopilot.core.bus import create_event_bus, get_event_bus
@@ -863,10 +1056,24 @@ class BankToYnabWorkflow(BaseWorkflow):
     async def _on_email_received(self, msg):
         if not self._matches_gmail_trigger(msg.payload):
             return  # Not for this workflow
+        # Manifest settings (e.g. auto_create) are forwarded from event payload
         await self.run(TriggerType.GMAIL_PUSH, trigger_payload)
 ```
 
 `_matches_gmail_trigger()` is a `BaseWorkflow` method that checks the email's sender and label IDs against the workflow's manifest `GMAIL_PUSH` trigger config. Each workflow decides independently if an email belongs to it — the bus delivers to all, each filters.
+
+#### Manifest Settings Forwarding in Event-Driven Mode
+
+When a workflow receives an event, `_on_email_received()` **generically forwards** any manifest settings found in the event payload into the `trigger_payload`. This ensures callers (E2E scripts, webhooks, external agents) can override workflow settings via the event payload:
+
+```python
+# workflow.py — _on_email_received()
+for setting in self.manifest.settings:
+    if setting.key in payload:
+        trigger_payload[setting.key] = payload[setting.key]
+```
+
+Settings **not** present in the event payload get their manifest defaults via `BaseWorkflow._apply_setting_defaults()`. This design keeps the workflow **self-contained** — it knows its own settings from `manifest.yaml` and handles defaults internally.
 
 | Platform Event        | Publisher                                   | Subscribers                         | Model                |
 | --------------------- | ------------------------------------------- | ----------------------------------- | -------------------- |
@@ -949,6 +1156,45 @@ result = await pipeline.execute(initial_input={"raw_text": "hello"})
 > `condition_expr` strings are sandboxed: only `state` is in scope, `__builtins__` are stripped.
 > Example: `"state.get('counter', 0) >= 3"`
 
+### A2A Protocol Server
+
+Autopilot is a **first-class citizen** in multi-agent ecosystems via the [A2A Protocol](https://google.github.io/A2A/) (Agent-to-Agent), implemented using Google's official `a2a-sdk`.
+
+**Endpoints:**
+
+| Endpoint                       | Method | Auth            | Purpose                                                  |
+| ------------------------------ | ------ | --------------- | -------------------------------------------------------- |
+| `/.well-known/agent-card.json` | GET    | None (A2A spec) | Agent discovery — returns `AgentCard` with skills        |
+| `/a2a`                         | POST   | `X-API-Key`     | JSON-RPC — `message/send`, `message/stream`, `tasks/get` |
+
+**Agent Card**: Built dynamically from `WorkflowRegistry` at startup. Each enabled workflow becomes an `AgentSkill`:
+
+```yaml
+skills:
+  - id: bank_to_ynab
+    name: Bank to YNAB
+    description: Parse bank emails and create YNAB transactions
+    tags: [finance, automation]
+```
+
+**Message Protocol**: The first `TextPart` of an A2A message must be JSON with a required `workflow` key:
+
+```json
+{ "workflow": "bank_to_ynab", "body": "email text", "auto_create": true }
+```
+
+**Task Lifecycle Mapping**:
+
+| Platform `RunStatus` | A2A `TaskState` |
+| -------------------- | --------------- |
+| `PENDING`            | `submitted`     |
+| `RUNNING`            | `working`       |
+| `SUCCESS`            | `completed`     |
+| `FAILED`             | `failed`        |
+
+> [!NOTE]
+> The A2A server uses an **in-memory task store** (ring-buffered, max 1000 tasks). This aligns with the stateless edge philosophy — no external DB required.
+
 ## 5. Observability & Telemetry
 
 A true tier-1 agentic system must have perfect visibility into non-deterministic LLM behavior.
@@ -1023,6 +1269,7 @@ Structured, typed exceptions across all platform layers:
 | Guardrail | `GuardrailBlockedError`   | ❌        | `GUARDRAIL_BLOCKED`    |
 | Session   | `SessionError`            | ❌        | `SESSION_ERROR`        |
 | Memory    | `MemoryServiceError`      | ❌        | `MEMORY_ERROR`         |
+| Artifact  | `ArtifactServiceError`    | ❌        | `ARTIFACT_ERROR`       |
 | Tools     | `ToolRegistryError`       | ❌        | `TOOL_REGISTRY_ERROR`  |
 | Tools     | `MCPBridgeError`          | ✅        | `MCP_BRIDGE_ERROR`     |
 | Tools     | `ToolCallbackError`       | ❌        | `TOOL_CALLBACK_ERROR`  |
@@ -1044,8 +1291,9 @@ autopilot/                        # Core platform logic
 │   ├── router.py                 # RouterRunner
 │   ├── orchestrator.py           # OrchestrationStrategy enum
 │   ├── session.py                # ADK re-exports: BaseSessionService, InMemorySessionService, Session
-│   ├── memory.py                 # ChromaMemoryService, InMemoryMemoryService
-│   ├── context.py                # AgentContext (session, memory, tools, bus auto-provisioned)
+│   ├── memory.py                 # ADK re-exports: BaseMemoryService, InMemoryMemoryService, MemoryEntry + factory
+│   ├── artifact.py               # ADK re-exports: BaseArtifactService, InMemoryArtifactService, GcsArtifactService + factory
+│   ├── context.py                # AgentContext (session, memory, artifacts, tools, bus auto-provisioned)
 │   ├── bus.py                    # V3 Phase 5 — EventBus (EventBusProtocol), AgentMessage, Subscription
 │   ├── dsl_schema.py             # V3 Phase 6 — DSLWorkflowDef, DSLStepDef, DSLNodeDef
 │   ├── dsl_loader.py             # V3 Phase 6 — load_workflow(), ref resolution, condition compiler
@@ -1070,6 +1318,11 @@ autopilot/                        # Core platform logic
 │   ├── system.py                # Health, metrics, root info endpoints
 │   └── v1/                      # Versioned public API
 │       └── routes.py            # /api/v1/* — workflow CRUD + execute (protected by X-API-Key)
+│   └── a2a/                     # A2A Protocol Server (agent discovery + JSON-RPC)
+│       ├── __init__.py          # Re-exports
+│       ├── agent_card.py        # Builds AgentCard from WorkflowRegistry
+│       ├── request_handler.py   # RequestHandler ABC impl → workflow bridge
+│       └── server.py            # Mounts routes via A2AFastAPIApplication
 ├── base_workflow.py              # BaseWorkflow (auto-loads manifest + pipeline)
 ├── errors.py                     # Structured error taxonomy
 ├── registry.py                   # WorkflowRegistry (3-level auto-discovery)
@@ -1365,6 +1618,15 @@ CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]
 ```
 
 **Why 1 worker is optimal**: The app is I/O-bound (async FastAPI + `httpx` + external API calls). A single `asyncio` event loop saturates 1 vCPU for I/O workloads. Cloud Run handles horizontal scaling (more instances, not more workers).
+
+#### gRPC Configuration
+
+gRPC emits false-positive fork warnings when async threads (not actual `fork()` syscalls) are detected. These are suppressed at two levels:
+
+1. **Dockerfile** — `ENV GRPC_ENABLE_FORK_SUPPORT=0` and `ENV GRPC_VERBOSITY=ERROR` (C-level, before any Python code)
+2. **`app.py`** — `os.environ.setdefault("GRPC_ENABLE_FORK_SUPPORT", "0")` (defense-in-depth for local dev)
+
+This is Google's **recommended configuration** for async Python applications that do not call `os.fork()`.
 
 #### Secrets at Runtime
 

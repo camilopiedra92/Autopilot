@@ -21,6 +21,7 @@ __all__ = [
     # Agent layer
     "AgentError",
     "LLMRateLimitError",
+    "ModelRateLimitError",
     "LLMContentFilterError",
     "AgentOutputParseError",
     # Connector layer
@@ -38,6 +39,8 @@ __all__ = [
     # Session & Memory layer (V3 Phase 3)
     "SessionError",
     "MemoryServiceError",
+    # Artifact layer
+    "ArtifactServiceError",
     # Tool Ecosystem layer (V3 Phase 4)
     "ToolRegistryError",
     "MCPBridgeError",
@@ -52,6 +55,10 @@ __all__ = [
     # DSL Layer (V3 Phase 6)
     "DSLValidationError",
     "DSLResolutionError",
+    # A2A Protocol Layer (Phase 8)
+    "A2AError",
+    "A2AWorkflowNotFoundError",
+    "A2ATaskNotFoundError",
 ]
 
 
@@ -189,11 +196,28 @@ class AgentError(AutoPilotError):
 
 
 class LLMRateLimitError(AgentError):
-    """LLM provider returned a rate limit / quota exceeded error."""
+    """LLM provider returned a rate limit / quota exceeded error (external 429)."""
 
     retryable = True
     error_code = "LLM_RATE_LIMIT"
     http_status = 429
+
+
+class ModelRateLimitError(AgentError):
+    """Platform rate limiter throttled the LLM call to prevent quota exhaustion."""
+
+    retryable = True
+    error_code = "MODEL_RATE_LIMIT"
+    http_status = 429
+
+    def __init__(self, message: str, *, model: str = "", **kwargs):
+        self.model = model
+        super().__init__(message, **kwargs)
+
+    def to_dict(self) -> dict:
+        d = super().to_dict()
+        d["model"] = self.model
+        return d
 
 
 class LLMContentFilterError(AgentError):
@@ -316,6 +340,13 @@ class MemoryServiceError(AutoPilotError):
     """Base for all memory service errors."""
 
     error_code = "MEMORY_ERROR"
+    http_status = 500
+
+
+class ArtifactServiceError(AutoPilotError):
+    """Base for all artifact service errors."""
+
+    error_code = "ARTIFACT_ERROR"
     http_status = 500
 
 
@@ -453,3 +484,29 @@ class DSLResolutionError(AutoPilotError):
         d = super().to_dict()
         d["ref"] = self.ref
         return d
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  A2A Protocol Layer — Errors from Phase 8 (Agent-to-Agent Protocol)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+class A2AError(AutoPilotError):
+    """Base for all A2A protocol errors."""
+
+    error_code = "A2A_ERROR"
+    http_status = 400
+
+
+class A2AWorkflowNotFoundError(A2AError):
+    """Requested workflow not found in registry."""
+
+    error_code = "A2A_WORKFLOW_NOT_FOUND"
+    http_status = 404
+
+
+class A2ATaskNotFoundError(A2AError):
+    """Task ID not found in task store."""
+
+    error_code = "A2A_TASK_NOT_FOUND"
+    http_status = 404

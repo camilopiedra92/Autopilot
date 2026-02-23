@@ -10,13 +10,8 @@ Every agent in the platform receives an ``AgentContext`` that provides:
   - metadata: Immutable run-level metadata (trigger, workflow, etc.)
   - session_service: ADK-native SessionService for full lifecycle
   - session: ADK Session object (id, app_name, user_id, state, events)
-  - memory: Long-term semantic memory shared across executions
-
-Design:
-  - Session and Memory are always present (auto-provisioned if not injected).
-  - ADK session is created lazily via ensure_session() — called automatically
-    by Pipeline/DAG executors before running agents.
-  - Agents interact with session.state directly (dict), exactly as ADK intended.
+  - memory: Long-term semantic memory (ADK BaseMemoryService)
+  - Memory uses ADK's event-based API (add_events_to_memory / search_memory).
   - Cheap to create; one per pipeline run.
   - Compatible with asyncio, zero thread-local hacks.
 """
@@ -29,12 +24,23 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import uuid4
 
+from google.adk.events.event import Event
+from google.genai import types
+
 from autopilot.core.session import (
     BaseSessionService,
-    InMemorySessionService,
     Session,
+    create_session_service,
 )
-from autopilot.core.memory import BaseMemoryService, InMemoryMemoryService, Observation
+from autopilot.core.memory import (
+    BaseMemoryService,
+    SearchMemoryResponse,
+    create_memory_service,
+)
+from autopilot.core.artifact import (
+    BaseArtifactService,
+    create_artifact_service,
+)
 
 
 @dataclass(frozen=False)
@@ -54,7 +60,8 @@ class AgentContext:
         metadata: Immutable, user-provided run metadata (trigger info, etc.).
         session_service: ADK-native SessionService (always present).
         session: ADK Session object — ``session.state`` is the KV store.
-        memory: Long-term memory service (always present).
+        memory: Long-term memory service (ADK BaseMemoryService, always present).
+        artifact_service: Versioned artifact storage (ADK BaseArtifactService, always present).
     """
 
     execution_id: str = field(default_factory=lambda: uuid4().hex[:16])
@@ -66,8 +73,11 @@ class AgentContext:
     session_service: BaseSessionService = field(default=None)
     session: Session = field(default=None)
 
-    # Long-term memory
+    # Long-term memory (ADK BaseMemoryService)
     memory: BaseMemoryService = field(default=None)
+
+    # Versioned artifact storage (ADK BaseArtifactService)
+    artifact_service: BaseArtifactService = field(default=None)
 
     # Internal
     _started_at: float = field(default_factory=time.monotonic)
@@ -75,11 +85,15 @@ class AgentContext:
     def __post_init__(self):
         # Auto-provision session service if not injected
         if self.session_service is None:
-            self.session_service = InMemorySessionService()
+            self.session_service = create_session_service()
 
         # Auto-provision memory if not injected
         if self.memory is None:
-            self.memory = InMemoryMemoryService()
+            self.memory = create_memory_service()
+
+        # Auto-provision artifact service if not injected
+        if self.artifact_service is None:
+            self.artifact_service = create_artifact_service()
 
         self.logger = structlog.get_logger("autopilot.core").bind(
             execution_id=self.execution_id,
@@ -148,24 +162,96 @@ class AgentContext:
         """Merge updates into the pipeline state (shallow merge)."""
         self.state.update(updates)
 
-    # ── Memory Convenience Methods ───────────────────────────────────
+    # ── Memory Convenience Methods (ADK-native) ──────────────────────
 
     async def remember(
         self,
         text: str,
         metadata: dict[str, Any] | None = None,
-    ) -> Observation:
-        """Record an observation in long-term memory."""
-        return await self.memory.add_observation(text, metadata)
+    ) -> None:
+        """Record text in long-term memory via ADK's event-based API.
+
+        Constructs an ADK Event wrapping the text as Content, then
+        calls ``add_events_to_memory`` for incremental storage.
+        """
+        event = Event(
+            author="agent",
+            content=types.Content(parts=[types.Part(text=text)]),
+        )
+        await self.memory.add_events_to_memory(
+            app_name=self.pipeline_name or "autopilot",
+            user_id="default",
+            events=[event],
+            custom_metadata=metadata,
+        )
 
     async def recall(
         self,
         query: str,
+    ) -> SearchMemoryResponse:
+        """Search long-term memory. Returns ADK SearchMemoryResponse."""
+        return await self.memory.search_memory(
+            app_name=self.pipeline_name or "autopilot",
+            user_id="default",
+            query=query,
+        )
+
+    # ── Artifact Convenience Methods (ADK-native) ─────────────────────
+
+    async def save_artifact(
+        self,
+        filename: str,
+        artifact: types.Part,
         *,
-        top_k: int = 5,
-    ) -> list[Observation]:
-        """Retrieve relevant observations from long-term memory."""
-        return await self.memory.search_relevant(query, top_k=top_k)
+        metadata: dict[str, Any] | None = None,
+    ) -> int:
+        """Save a versioned artifact. Returns the version number.
+
+        Scoped to the current pipeline run (app_name + execution_id).
+        Uses ADK-native ``types.Part`` — callers wrap data via
+        ``types.Part(text=json.dumps(data))`` or
+        ``types.Part(inline_data=types.Blob(...))``.
+        """
+        return await self.artifact_service.save_artifact(
+            app_name=self.pipeline_name or "autopilot",
+            user_id="default",
+            session_id=self.execution_id,
+            filename=filename,
+            artifact=artifact,
+            custom_metadata=metadata,
+        )
+
+    async def load_artifact(
+        self,
+        filename: str,
+        *,
+        version: int | None = None,
+        run_id: str | None = None,
+    ) -> types.Part | None:
+        """Load an artifact by filename.
+
+        Defaults to the current run. Pass ``run_id`` for cross-run access
+        (e.g., debugging a previous execution).
+        """
+        return await self.artifact_service.load_artifact(
+            app_name=self.pipeline_name or "autopilot",
+            user_id="default",
+            session_id=run_id or self.execution_id,
+            filename=filename,
+            version=version,
+        )
+
+    async def list_artifacts(
+        self,
+        *,
+        run_id: str | None = None,
+    ) -> list[str]:
+        """List artifact filenames for the current or specified run."""
+        return await self.artifact_service.list_artifact_keys(
+            app_name=self.pipeline_name or "autopilot",
+            user_id="default",
+            session_id=run_id or self.execution_id,
+        )
 
     # ── Timing ───────────────────────────────────────────────────────
 
@@ -200,6 +286,7 @@ class AgentContext:
             session_service=self.session_service,
             session=self.session,  # Same ADK Session
             memory=self.memory,
+            artifact_service=self.artifact_service,
             _started_at=self._started_at,
         )
         child.logger = self.logger.bind(step=step_name)

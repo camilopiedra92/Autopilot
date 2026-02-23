@@ -54,13 +54,25 @@ ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
+# Suppress gRPC C-level fork warnings (false positive from async threads)
+ENV GRPC_ENABLE_FORK_SUPPORT=0
+ENV GRPC_VERBOSITY=ERROR
+
 # Cloud Run injects these automatically:
 #   GOOGLE_CLOUD_PROJECT — GCP project ID
 #   K_SERVICE           — Cloud Run service name
 #   K_REVISION          — Cloud Run revision name
 #   K_CONFIGURATION     — Cloud Run configuration name
 # App-level env vars (set via gcloud/cloudbuild.yaml):
-#   EVENTBUS_BACKEND    — "memory" (default) or "pubsub" (production)
+#   EVENTBUS_BACKEND              — "memory" (default) or "pubsub" (production)
+#   SESSION_BACKEND               — "memory" (default) or "firestore" (production)
+#   MEMORY_BACKEND                — "memory" (default) or "vertexai" (production)
+#   MEMORY_AGENT_ENGINE_ID        — Vertex AI Agent Engine ID (required when MEMORY_BACKEND=vertexai)
+#   ARTIFACT_BACKEND              — "memory" (default) or "gcs" (production)
+#   ARTIFACT_GCS_BUCKET           — GCS bucket name (required when ARTIFACT_BACKEND=gcs)
+#   CONTEXT_CACHE_MIN_TOKENS      — Min tokens to trigger caching (default: 2048)
+#   CONTEXT_CACHE_TTL_SECONDS     — Cache TTL in seconds (default: 1800)
+#   CONTEXT_CACHE_INTERVALS       — Max cache reuses before refresh (default: 10)
 # Secrets are injected via Secret Manager → env vars (see cloudbuild.yaml)
 
 EXPOSE ${PORT}

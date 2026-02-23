@@ -11,6 +11,7 @@ This is the ONLY way ADK agents are executed within the platform. It adds:
   - OpenTelemetry tracing spans
   - Structured result extraction (PipelineResult)
   - Function call response handling (Native Output Schema)
+  - Per-agent context caching via App wrapper (when opted in)
 
 Usage:
     from autopilot.core.adk_runner import get_adk_runner
@@ -33,8 +34,15 @@ from uuid import uuid4
 
 from opentelemetry import trace
 
+from google.adk.apps.app import App
 from google.adk.runners import Runner
+from autopilot.agents.context_cache import (
+    has_cache_context,
+    create_context_cache_config,
+)
 from autopilot.core.session import InMemorySessionService
+from autopilot.core.memory import create_memory_service
+from autopilot.core.artifact import create_artifact_service
 from google.genai import types
 
 from autopilot.agents.callbacks import pipeline_session_id
@@ -59,6 +67,8 @@ class ADKRunner:
         self._app_name = app_name
         self._user_id = user_id
         self._session_service = InMemorySessionService()
+        self._memory_service = create_memory_service()
+        self._artifact_service = create_artifact_service()
 
     @retry_with_backoff(
         retries=3,
@@ -128,11 +138,28 @@ class ADKRunner:
         start = time.monotonic()
 
         try:
-            runner = Runner(
-                app_name=self._app_name,
-                agent=pipeline,
-                session_service=self._session_service,
-            )
+            # Conditionally wrap agent in App for context caching
+            if has_cache_context(pipeline):
+                cache_config = create_context_cache_config()
+                app = App(
+                    name=self._app_name,
+                    root_agent=pipeline,
+                    context_cache_config=cache_config,
+                )
+                runner = Runner(
+                    app=app,
+                    session_service=self._session_service,
+                    memory_service=self._memory_service,
+                    artifact_service=self._artifact_service,
+                )
+            else:
+                runner = Runner(
+                    app_name=self._app_name,
+                    agent=pipeline,
+                    session_service=self._session_service,
+                    memory_service=self._memory_service,
+                    artifact_service=self._artifact_service,
+                )
 
             # Create a fresh session with optional initial state
             session = await self._session_service.create_session(
@@ -169,7 +196,11 @@ class ADKRunner:
 
             span.add_event("adk_runner_started")
 
-            # Run the agent
+            # Run the agent and extract final text response.
+            # When output_schema is set, ADK activates Gemini native JSON mode
+            # (response_schema + response_mime_type=application/json), which
+            # guarantees structured JSON text output. ADK also disables tools
+            # and function calls in this mode, so only text parts are emitted.
             final_text = ""
             async for event in runner.run_async(
                 user_id=self._user_id,
@@ -178,26 +209,9 @@ class ADKRunner:
             ):
                 if event.is_final_response():
                     if event.content and event.content.parts:
-                        # Extract text parts
                         text_parts = [p.text for p in event.content.parts if p.text]
                         if text_parts:
                             final_text = "\n".join(text_parts)
-
-                        # Extract function call parts (Native Output Schema)
-                        if not final_text:
-                            for p in event.content.parts:
-                                if p.function_call and p.function_call.args:
-                                    try:
-                                        import json
-
-                                        fc_data = dict(p.function_call.args)
-                                        final_text = json.dumps(fc_data)
-                                        break
-                                    except Exception as e:
-                                        logger.warning(
-                                            "failed_to_serialize_func_call",
-                                            error=str(e),
-                                        )
 
             elapsed_ms = round((time.monotonic() - start) * 1000, 2)
 

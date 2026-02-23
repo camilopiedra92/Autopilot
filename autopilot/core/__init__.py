@@ -9,7 +9,7 @@ This package provides the foundational building blocks for the platform:
   - FunctionalAgent: Zero-boilerplate wrapper for pure functions
   - V3 Adapters: SequentialAgentAdapter, LoopAgentAdapter, ParallelAgentAdapter
   - OrchestrationStrategy: Multi-strategy enum (SEQUENTIAL, DAG, REACT, ROUTER)
-  - Session & Memory: Short-term state + long-term semantic memory (V3 Phase 3)
+  - Session & Memory: Short-term state + long-term ADK-native memory
   - Tool Ecosystem: ToolRegistry, @tool decorator, MCP Bridge (V3 Phase 4)
   - Event Bus: Unified typed pub/sub messaging for all platform events
 """
@@ -29,11 +29,21 @@ from autopilot.core.session import (
     BaseSessionService,
     InMemorySessionService,
     Session,
+    create_session_service,
 )
 from autopilot.core.memory import (
     BaseMemoryService,
     InMemoryMemoryService,
-    Observation,
+    MemoryEntry,
+    SearchMemoryResponse,
+    create_memory_service,
+)
+from autopilot.core.artifact import (
+    BaseArtifactService,
+    InMemoryArtifactService,
+    GcsArtifactService,
+    ArtifactVersion,
+    create_artifact_service,
 )
 from autopilot.core.tools import (
     ToolInfo,
@@ -81,9 +91,18 @@ __all__ = [
     "BaseSessionService",
     "InMemorySessionService",
     "Session",
+    "create_session_service",
     "BaseMemoryService",
     "InMemoryMemoryService",
-    "Observation",
+    "MemoryEntry",
+    "SearchMemoryResponse",
+    "create_memory_service",
+    # Artifact Store
+    "BaseArtifactService",
+    "InMemoryArtifactService",
+    "GcsArtifactService",
+    "ArtifactVersion",
+    "create_artifact_service",
     # V3 Phase 4 — Tool Ecosystem
     "ToolInfo",
     "ToolRegistry",

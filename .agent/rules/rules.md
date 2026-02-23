@@ -30,7 +30,7 @@
 - **ALWAYS** add `tool_context: ToolContext` parameter when a tool needs access to session state, memory, or auth.
 - **ALWAYS** use `@long_running_tool` for operations that need async/batch processing or human approval.
 - Use `get_callback_manager()` to register lifecycle hooks (rate limits, audit logs, auth checks) at the platform level.
-- **ALWAYS** set `output_key` on LLM agents to leverage ADK session state for structured output — never rely on fragile text parsing as the primary output path.
+- **ALWAYS** set `output_key` on LLM agents to leverage ADK session state for structured output. When the agent produces structured data, **ALWAYS** also set `output_schema` (Pydantic model) — this activates Gemini native JSON mode (`response_schema` + `response_mime_type=application/json`) and auto-disables agent transfers for full isolation. Never rely on fragile text parsing as the primary output path.
 
 ## 4. Declarative Pipelines (DSL)
 

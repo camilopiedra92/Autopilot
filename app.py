@@ -14,11 +14,17 @@ Run with:
   uvicorn app:app --reload --port 8080
 """
 
+import os
+
+# ── gRPC configuration ───────────────────────────────────────────────
+# Disable false-positive fork warnings (async threads, not actual forks)
+os.environ.setdefault("GRPC_ENABLE_FORK_SUPPORT", "0")
+os.environ.setdefault("GRPC_VERBOSITY", "ERROR")
+
 import structlog
 import uvicorn
 
 from autopilot.version import VERSION, APP_NAME
-import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -98,6 +104,11 @@ async def lifespan(app: FastAPI):
         workflows=registry.list_names(),
         workflow_count=registry.count,
     )
+
+    # 5. Mount A2A Protocol Server (agent discovery + JSON-RPC)
+    from autopilot.api.a2a import mount_a2a_routes
+
+    mount_a2a_routes(app, registry)
 
     yield
 

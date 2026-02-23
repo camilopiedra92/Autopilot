@@ -74,5 +74,6 @@ def create_telegram_notifier(**kwargs: Any) -> Any:
         description="Sends formatted transaction summaries to Telegram.",
         instruction=NOTIFIER_INSTRUCTION,
         tools=["telegram.send_message_string"],
+        cache_context=True,
         **kwargs,
     )

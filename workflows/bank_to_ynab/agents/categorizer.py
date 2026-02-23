@@ -76,6 +76,7 @@ def create_categorizer(model_name: str = "gemini-3-flash-preview") -> LlmAgent:
         output_key="categorized_tx",
         output_schema=CategorizedTransaction,
         tools=["ynab.get_categories_string"],
+        cache_context=True,
         after_model_callback=create_chained_after_callback(
             semantic_coherence_guard(rules=_COHERENCE_RULES),
             uuid_format_guard(fields=("category_id",)),

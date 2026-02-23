@@ -12,9 +12,14 @@ Usage:
 
 import asyncio
 import json
+import os
 import sys
 import time
-import os
+
+# gRPC: disable false-positive fork warnings (async threads, not actual forks)
+os.environ.setdefault("GRPC_ENABLE_FORK_SUPPORT", "0")
+os.environ.setdefault("GRPC_VERBOSITY", "ERROR")
+
 import structlog
 
 # Ensure the project root is on sys.path for `workflows` imports
@@ -128,6 +133,7 @@ async def run_e2e(email_text: str, auto_create: bool = True, via_bus: bool = Fal
             "body": email_text,
             "label_ids": ["INBOX", "Bancos/Bancolombia"],
             "source": "e2e_test",
+            "auto_create": auto_create,
             "email": {
                 "id": "e2e-test-001",
                 "from": "alertasynotificaciones@bancolombia.com.co",
