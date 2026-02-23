@@ -179,22 +179,57 @@ class AsyncTelegramClient:
         logger.info("telegram_message_sent", message_id=result.get("message_id"))
         return result
 
+    @staticmethod
+    def _markdown_to_telegram_html(text: str) -> str:
+        """Convert common Markdown formatting to Telegram-compatible HTML.
+
+        Supported conversions (applied in order):
+          - ``**bold**`` → ``<b>bold</b>``
+          - ``*italic*`` / ``_italic_`` → ``<i>italic</i>``
+          - ``~~strikethrough~~`` → ``<s>strikethrough</s>``
+          - ````` ```code block``` ````` → ``<pre>code</pre>``
+          - `` `inline code` `` → ``<code>inline code</code>``
+          - ``[label](url)`` → ``<a href="url">label</a>``
+
+        HTML entities are escaped **first** so user content never breaks
+        Telegram's parser.  Telegram does not support tables in HTML mode,
+        so table-like text passes through as plain text.
+        """
+        import re
+
+        # 1. Escape HTML entities first
+        t = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+        # 2. Code blocks (``` ... ```) — must go before inline code
+        t = re.sub(r"```(?:\w*\n)?(.*?)```", r"<pre>\1</pre>", t, flags=re.DOTALL)
+
+        # 3. Inline code (`)
+        t = re.sub(r"`([^`]+)`", r"<code>\1</code>", t)
+
+        # 4. Bold (**text**)
+        t = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", t, flags=re.DOTALL)
+
+        # 5. Italic — *text* (but not already-consumed **)
+        t = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"<i>\1</i>", t)
+
+        # 6. Italic — _text_
+        t = re.sub(r"(?<!\w)_(.+?)_(?!\w)", r"<i>\1</i>", t)
+
+        # 7. Strikethrough (~~text~~)
+        t = re.sub(r"~~(.*?)~~", r"<s>\1</s>", t)
+
+        # 8. Markdown links [label](url)
+        t = re.sub(r"\[([^\]]+)]\(([^)]+)\)", r'<a href="\2">\1</a>', t)
+
+        return t
+
     async def send_message_string(self, chat_id: str, text: str) -> str:
         """
         AI-friendly wrapper — sends a message and returns a human-readable
         confirmation string. Automatically converts Markdown to Telegram HTML
         so it renders correctly.
         """
-        import re
-
-        # 1. Escape HTML entities to avoid parsing errors
-        html_text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-        # 2. Convert standard markdown bold (**) to HTML
-        html_text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", html_text)
-
-        # 3. Convert markdown inline code (`) to HTML
-        html_text = re.sub(r"`([^`]+)`", r"<code>\1</code>", html_text)
+        html_text = self._markdown_to_telegram_html(text)
 
         # Send using HTML parse mode
         result = await self.send_message(
