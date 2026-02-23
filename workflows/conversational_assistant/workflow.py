@@ -8,8 +8,6 @@ manifest.yaml and agent cards are auto-loaded by BaseWorkflow.
 This file provides the custom execute() and Telegram webhook route.
 """
 
-from __future__ import annotations
-
 import os
 import structlog
 
