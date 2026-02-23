@@ -53,6 +53,7 @@ from __future__ import annotations
 import abc
 import asyncio
 import fnmatch
+import os
 import structlog
 from collections import deque
 from dataclasses import dataclass, field
@@ -128,12 +129,12 @@ class EventBusProtocol(abc.ABC):
     Abstract Event Bus protocol — swappable backends.
 
     All event bus implementations MUST implement this interface.
-    Aligned with Google ADK's event streaming model.
+    Backend selection is config-driven via ``EVENTBUS_BACKEND`` env var.
 
     Implementations:
-      - EventBus (InMemory): dev/test/single-instance — asyncio, zero deps
-      - RedisStreamEventBus: production — Redis Streams, consumer groups
-      - CloudPubSubEventBus: future — GCP Pub/Sub, fully managed
+      - EventBus (InMemory): dev/test — asyncio, zero deps, deterministic
+      - CloudPubSubEventBus: production — GCP Pub/Sub, fully managed,
+        cross-instance fanout, 7-day retention, scale-to-zero native
     """
 
     @abc.abstractmethod
@@ -499,17 +500,46 @@ class EventBus(EventBusProtocol):
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  Singleton — Module-level accessor
+#  Factory + Singleton
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-_event_bus: EventBus | None = None
+
+def create_event_bus(backend: str | None = None) -> EventBusProtocol:
+    """Factory for creating the appropriate bus backend.
+
+    Backend selection follows 12-Factor App (Factor III: Config):
+      - ``"memory"`` (default): In-memory bus for dev/test
+      - ``"pubsub"``: Cloud Pub/Sub for production (cross-instance, durable)
+
+    Args:
+        backend: Override backend choice. Defaults to ``EVENTBUS_BACKEND``
+                 env var, falling back to ``"memory"``.
+
+    Returns:
+        An ``EventBusProtocol`` implementation.
+    """
+    backend = backend or os.getenv("EVENTBUS_BACKEND", "memory")
+
+    if backend == "pubsub":
+        from autopilot.core.bus_pubsub import CloudPubSubEventBus
+
+        return CloudPubSubEventBus.from_env()
+
+    return EventBus()
 
 
-def get_event_bus() -> EventBus:
-    """Get or create the global EventBus singleton."""
+_event_bus: EventBusProtocol | None = None
+
+
+def get_event_bus() -> EventBusProtocol:
+    """Get or create the global EventBus singleton.
+
+    The backend is selected by ``create_event_bus()`` on first call.
+    Subsequent calls return the same instance.
+    """
     global _event_bus
     if _event_bus is None:
-        _event_bus = EventBus()
+        _event_bus = create_event_bus()
     return _event_bus
 
 

@@ -1126,75 +1126,61 @@ class TestBaseWorkflowStrategy:
 #  V3 Phase 3 — Session Service Tests
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-from autopilot.core.session import InMemorySessionService
+from autopilot.core.session import InMemorySessionService, Session
 from autopilot.core.memory import InMemoryMemoryService
 
 
-class TestInMemorySessionService:
-    """Tests for InMemorySessionService — short-term key-value state."""
+class TestSessionStateDict:
+    """Tests for ADK Session.state — plain dict operations, no wrappers."""
 
-    @pytest.mark.asyncio
-    async def test_get_and_set(self):
-        session = InMemorySessionService()
-        await session.set("user_id", "u123")
-        result = await session.get("user_id")
-        assert result == "u123"
+    def _make_session(self, initial_state=None):
+        return Session(
+            id="test-001",
+            app_name="autopilot",
+            user_id="test",
+            state=dict(initial_state or {}),
+        )
 
-    @pytest.mark.asyncio
-    async def test_get_missing_returns_default(self):
-        session = InMemorySessionService()
-        assert await session.get("missing") is None
-        assert await session.get("missing", "fallback") == "fallback"
+    def test_get_and_set(self):
+        session = self._make_session()
+        session.state["user_id"] = "u123"
+        assert session.state["user_id"] == "u123"
 
-    @pytest.mark.asyncio
-    async def test_delete_existing_key(self):
-        session = InMemorySessionService()
-        await session.set("key", "value")
-        assert await session.delete("key") is True
-        assert await session.get("key") is None
+    def test_get_missing_returns_default(self):
+        session = self._make_session()
+        assert session.state.get("missing") is None
+        assert session.state.get("missing", "fallback") == "fallback"
 
-    @pytest.mark.asyncio
-    async def test_delete_missing_key(self):
-        session = InMemorySessionService()
-        assert await session.delete("ghost") is False
+    def test_delete_existing_key(self):
+        session = self._make_session()
+        session.state["key"] = "value"
+        del session.state["key"]
+        assert "key" not in session.state
 
-    @pytest.mark.asyncio
-    async def test_clear_resets_all(self):
-        session = InMemorySessionService()
-        await session.set("a", 1)
-        await session.set("b", 2)
-        await session.clear()
-        snap = await session.snapshot()
-        assert snap == {}
-        assert session.size == 0
+    def test_clear_resets_all(self):
+        session = self._make_session()
+        session.state["a"] = 1
+        session.state["b"] = 2
+        session.state.clear()
+        assert session.state == {}
 
-    @pytest.mark.asyncio
-    async def test_snapshot_returns_copy(self):
-        """Snapshot should return a copy — mutations don't affect internal state."""
-        session = InMemorySessionService()
-        await session.set("x", 42)
-        snap = await session.snapshot()
-        snap["x"] = 999  # Mutate the copy
-        assert await session.get("x") == 42  # Internal state unchanged
+    def test_initial_state(self):
+        session = self._make_session({"preset": "value"})
+        assert session.state["preset"] == "value"
+        assert len(session.state) == 1
 
-    @pytest.mark.asyncio
-    async def test_session_isolation(self):
-        """Two instances should not share state."""
-        s1 = InMemorySessionService()
-        s2 = InMemorySessionService()
-        await s1.set("only_in_s1", True)
-        assert await s2.get("only_in_s1") is None
+    def test_session_isolation(self):
+        s1 = self._make_session()
+        s2 = self._make_session()
+        s1.state["only_in_s1"] = True
+        assert "only_in_s1" not in s2.state
 
-    @pytest.mark.asyncio
-    async def test_initial_state(self):
-        """Initial state should be usable at construction time."""
-        session = InMemorySessionService(initial_state={"preset": "value"})
-        assert await session.get("preset") == "value"
-        assert session.size == 1
-
-    def test_repr(self):
-        session = InMemorySessionService()
-        assert "InMemorySessionService" in repr(session)
+    def test_session_metadata(self):
+        session = self._make_session()
+        assert session.id == "test-001"
+        assert session.app_name == "autopilot"
+        assert session.user_id == "test"
+        assert session.events == []
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1293,48 +1279,75 @@ class TestInMemoryMemoryService:
 
 
 class TestAgentContextPhase3:
-    """Tests for AgentContext with Session and Memory services."""
+    """Tests for AgentContext with ADK-native Session and Memory."""
 
     @pytest.mark.asyncio
-    async def test_context_with_session_and_memory(self):
-        """Injecting session + memory into context should work."""
-        session = InMemorySessionService()
-        memory = InMemoryMemoryService()
+    async def test_ensure_session_creates_session(self):
+        """ensure_session() should create an ADK Session directly."""
+        ctx = AgentContext(pipeline_name="test")
+        assert ctx.session is None
 
-        ctx = AgentContext(
-            pipeline_name="test",
-            session=session,
-            memory=memory,
-        )
+        await ctx.ensure_session()
 
-        assert ctx.session is session
-        assert ctx.memory is memory
+        assert ctx.session is not None
+        assert isinstance(ctx.session, Session)
+        assert ctx.session.app_name == "autopilot"
+        assert ctx.session.user_id == "default"
 
     @pytest.mark.asyncio
-    async def test_for_step_propagates_session_memory(self):
-        """Child context should inherit session and memory."""
-        session = InMemorySessionService()
-        memory = InMemoryMemoryService()
+    async def test_ensure_session_idempotent(self):
+        """Calling ensure_session() twice should be a no-op on second call."""
+        ctx = AgentContext(pipeline_name="test")
+        await ctx.ensure_session()
+        first_session = ctx.session
+        await ctx.ensure_session()
+        assert ctx.session is first_session  # Same object
 
-        ctx = AgentContext(
-            pipeline_name="test",
-            session=session,
-            memory=memory,
-        )
+    @pytest.mark.asyncio
+    async def test_for_step_propagates_session_and_memory(self):
+        """Child context should share session_service, session, and memory."""
+        ctx = AgentContext(pipeline_name="test")
+        await ctx.ensure_session()
 
         child = ctx.for_step("step_1")
 
-        assert child.session is session
-        assert child.memory is memory
+        assert child.session_service is ctx.session_service
+        assert child.session is ctx.session
+        assert child.memory is ctx.memory
 
     @pytest.mark.asyncio
-    async def test_auto_provisioned_session_and_memory(self):
-        """Context without explicit session/memory should auto-provision them."""
+    async def test_auto_provisioned_session_service_and_memory(self):
+        """Context without explicit services should auto-provision them."""
         ctx = AgentContext(pipeline_name="test")
-        assert ctx.session is not None
+        assert ctx.session_service is not None
+        assert isinstance(ctx.session_service, InMemorySessionService)
         assert ctx.memory is not None
-        assert isinstance(ctx.session, InMemorySessionService)
         assert isinstance(ctx.memory, InMemoryMemoryService)
+
+    @pytest.mark.asyncio
+    async def test_session_state_dict_through_context(self):
+        """Session.state dict access should work — the ADK way."""
+        ctx = AgentContext(pipeline_name="test")
+        await ctx.ensure_session()
+
+        ctx.session.state["user_tz"] = "EST"
+        assert ctx.session.state["user_tz"] == "EST"
+        del ctx.session.state["user_tz"]
+        assert "user_tz" not in ctx.session.state
+
+    @pytest.mark.asyncio
+    async def test_injected_session_used_directly(self):
+        """Injecting an ADK Session directly should work — no wrappers."""
+        session = Session(
+            id="injected-001",
+            app_name="autopilot",
+            user_id="test",
+            state={"pre": "loaded"},
+        )
+        ctx = AgentContext(pipeline_name="test", session=session)
+
+        assert ctx.session is session
+        assert ctx.session.state["pre"] == "loaded"
 
     @pytest.mark.asyncio
     async def test_remember_and_recall(self):

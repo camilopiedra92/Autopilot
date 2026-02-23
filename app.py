@@ -116,18 +116,22 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-cors_origins_str = os.getenv("API_CORS_ORIGINS", "*")
+# ── CORS ─────────────────────────────────────────────────────────────
+# Headless API: CORS is disabled by default (empty = no browser
+# origins allowed).  Opt-in via API_CORS_ORIGINS="https://admin.example.com".
+cors_origins_str = os.getenv("API_CORS_ORIGINS", "")
 allowed_origins = [
     origin.strip() for origin in cors_origins_str.split(",") if origin.strip()
 ]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if allowed_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Register global exception handler
 app.add_exception_handler(AutoPilotError, autopilot_error_handler)

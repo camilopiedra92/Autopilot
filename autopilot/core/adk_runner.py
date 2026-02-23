@@ -34,7 +34,7 @@ from uuid import uuid4
 from opentelemetry import trace
 
 from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
+from autopilot.core.session import InMemorySessionService
 from google.genai import types
 
 from autopilot.agents.callbacks import pipeline_session_id

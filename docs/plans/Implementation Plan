@@ -150,14 +150,14 @@ This was a **workflow-specific value** in a **platform-level module**. Should de
 
 ## 🔧 ADJUST — Upgrade to World-Class
 
-### A1. Session Service — Not Aligned with ADK's `SessionService`
+### ✅ A1. Session Service — Aligned with ADK's Native `SessionService` — DONE
 
-Google ADK's native `SessionService` uses `Session` objects with `id`, `app_name`, `user_id`, `state`, and `events`. Your `BaseSessionService` is a simpler KV store.
+Google ADK's native `SessionService` uses `Session` objects with `id`, `app_name`, `user_id`, `state`, and `events`. The platform's old `BaseSessionService` was a simpler KV store.
 
-**Current**: Raw KV with `get/set/delete/clear`
-**ADK Standard**: `create_session()`, `get_session()`, `list_sessions()` returning `Session` objects with full metadata
+**Resolution**: Eliminated the custom ABC entirely. `session.py` is now 23 lines of pure ADK re-exports. `ctx.session` is the ADK `Session` directly — `ctx.session.state` is a plain dict. Deleted `RedisSessionService` and `SessionStateAccessor`. 335 tests pass.
 
-**Recommendation**: Wrap your session service to be a **proper ADK `SessionService` adapter** so the platform can natively participate in ADK's session lifecycle, especially for A2A scenarios where sessions cross agent boundaries.
+> [!NOTE]
+> **COMPLETED** — Platform session layer fully aligned with Google ADK. No custom abstractions remain.
 
 ---
 
@@ -176,19 +176,9 @@ Your `InMemoryMemoryService` implements TF-IDF from scratch (pure Python, zero d
 
 ---
 
-### A3. AgentBus — In-Memory Only, Dies on Scale-to-Zero
+### ✅ A3. AgentBus — Cloud-Native Pub/Sub Backend — DONE
 
-The `AgentBus` is a pure in-memory singleton. When Cloud Run scales to zero and back, all subscriptions are lost. The bus history (ring buffer) is also lost.
-
-**Current**: In-memory `dict` with `deque` history
-**Edge Standard**: For truly stateless deployments, the bus should have a **durable backend**
-
-**Recommendation**: Implement `EventBusProtocol` (already referenced in your conversation history) with:
-
-1. `InMemoryAgentBus` — current implementation, for local dev
-2. `PubSubAgentBus` — backed by Google Cloud Pub/Sub for cross-instance fanout (native to your infra)
-
-This is critical for multi-workflow event routing across Cloud Run instances.
+Implemented `CloudPubSubEventBus` (`autopilot/core/bus_pubsub.py`) backed by Google Cloud Pub/Sub. Added `create_event_bus()` factory with `EVENTBUS_BACKEND` env var selection. In-memory `EventBus` remains for dev/test (12-Factor best practice). Hybrid dispatch: local zero-latency + Pub/Sub persistence/cross-instance. 24 new tests, 359 total passing.
 
 ---
 
@@ -224,15 +214,16 @@ Also hardened `.dockerignore` with `docs/`, `scripts/`, `*.egg-info/`, `ruff.tom
 
 ---
 
-### A6. CORS Wildcard in Production
+### ✅ A6. CORS Wildcard in Production — DONE
 
 ```python
-cors_origins_str = os.getenv("API_CORS_ORIGINS", "*")
+cors_origins_str = os.getenv("API_CORS_ORIGINS", "")
 ```
 
-Default `"*"` in production is a security risk for a headless API that should only accept trusted sources (Pub/Sub, Cloud Scheduler, API keys).
+Default changed from `"*"` to `""` — CORS is now **disabled by default** (headless API). `CORSMiddleware` is only mounted when `API_CORS_ORIGINS` is explicitly set. Opt-in via env var (e.g., `API_CORS_ORIGINS=https://admin.example.com`).
 
-**Recommendation**: Default to empty or `""` — require explicit opt-in for CORS origins.
+> [!NOTE]
+> **COMPLETED** — Default `""`, conditional middleware mount, `.env.example` documented, 5 unit tests added. 332 tests passing.
 
 ---
 
@@ -286,9 +277,9 @@ For agents that process long, repeated prompts (e.g., categorizer with 50+ categ
 
 ### N4. Firestore-Backed Session Service (Serverless)
 
-Your `RedisSessionService` requires a Redis instance. On Cloud Run (scale-to-zero), this means paying for an always-on Memorystore instance.
+The platform now uses ADK's `BaseSessionService` ABC (A1 complete). The default `InMemorySessionService` works for dev/test but loses state across container restarts.
 
-**Recommendation**: Add `FirestoreSessionService` — native GCP, serverless, auto-scales, pay-per-use, perfect for scale-to-zero architectures. Aligns with the "edge, no infra" philosophy.
+**Recommendation**: Implement `FirestoreSessionService` as an ADK-native `BaseSessionService` backend — native GCP, serverless, auto-scales, pay-per-use, perfect for scale-to-zero architectures. Aligns with the "edge, no infra" philosophy.
 
 ---
 
@@ -325,7 +316,7 @@ The `ToolCallbackManager` has `create_rate_limit_callback` for tools, but there'
 | E3  | ~~Delete `requirements.txt`~~  | ✅ DONE | —      |
 | E4  | ~~Secure credentials~~         | ✅ DONE | —      |
 | E7  | ~~Fix hardcoded service name~~ | ✅ DONE | —      |
-| A6  | Fix CORS default               | ADJUST  | 2 min  |
+| A6  | ~~Fix CORS default~~           | ✅ DONE | —      |
 
 ### Short-Term (Week 1) — Architectural Hygiene
 
@@ -340,14 +331,14 @@ The `ToolCallbackManager` has `create_rate_limit_callback` for tools, but there'
 
 ### Medium-Term (Month 1) — Edge Differentiation
 
-| #   | Action                                  | Type   | Effort   |
-| --- | --------------------------------------- | ------ | -------- |
-| A1  | Align session with ADK SessionService   | ADJUST | 1-2 days |
-| A3  | Cloud-native AgentBus (Pub/Sub backend) | ADJUST | 2-3 days |
-| N1  | A2A Protocol server                     | ADD    | 2-3 days |
-| N2  | Structured output enforcement           | ADD    | 1 day    |
-| N4  | FirestoreSessionService                 | ADD    | 1-2 days |
-| N6  | Model rate limiter                      | ADD    | 1 day    |
+| #   | Action                                      | Type    | Effort   |
+| --- | ------------------------------------------- | ------- | -------- |
+| A1  | ~~Align session with ADK SessionService~~   | ✅ DONE | —        |
+| A3  | ~~Cloud-native AgentBus (Pub/Sub backend)~~ | ✅ DONE | —        |
+| N1  | A2A Protocol server                         | ADD     | 2-3 days |
+| N2  | Structured output enforcement               | ADD     | 1 day    |
+| N4  | FirestoreSessionService (ADK ABC impl)      | ADD     | 1-2 days |
+| N6  | Model rate limiter                          | ADD     | 1 day    |
 
 ### Long-Term (Quarter) — World-Class Edge
 

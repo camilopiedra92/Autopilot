@@ -197,7 +197,7 @@ class TestYNABClientIntegration:
 async def _run_parser_on_text(email_text: str) -> dict:
     """Helper: runs the email parser agent on a single text and returns parsed JSON."""
     from google.adk.runners import Runner
-    from google.adk.sessions import InMemorySessionService
+    from autopilot.core.session import InMemorySessionService
     from google.genai import types
     from workflows.bank_to_ynab.agents.email_parser import create_email_parser
     from workflows.bank_to_ynab.steps import sanitize_email_html
@@ -373,7 +373,7 @@ class TestEmailParserIntegration:
 async def _run_agent_with_state(agent, initial_state: dict) -> dict:
     """Helper: runs an ADK agent with pre-populated session state."""
     from google.adk.runners import Runner
-    from google.adk.sessions import InMemorySessionService
+    from autopilot.core.session import InMemorySessionService
     from google.genai import types
 
     session_service = InMemorySessionService()

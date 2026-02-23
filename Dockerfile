@@ -59,6 +59,8 @@ ENV PYTHONDONTWRITEBYTECODE=1
 #   K_SERVICE           — Cloud Run service name
 #   K_REVISION          — Cloud Run revision name
 #   K_CONFIGURATION     — Cloud Run configuration name
+# App-level env vars (set via gcloud/cloudbuild.yaml):
+#   EVENTBUS_BACKEND    — "memory" (default) or "pubsub" (production)
 # Secrets are injected via Secret Manager → env vars (see cloudbuild.yaml)
 
 EXPOSE ${PORT}

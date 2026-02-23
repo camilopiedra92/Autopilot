@@ -1,103 +1,112 @@
+"""
+Tests for session module — ADK-native SessionService re-exports.
+
+Verifies that the platform re-exports are the exact ADK types
+and that ADK's InMemorySessionService lifecycle works correctly.
+"""
+
 import pytest
-from unittest.mock import AsyncMock, patch
-from autopilot.core.session import RedisSessionService
+
+from autopilot.core.session import (
+    BaseSessionService,
+    InMemorySessionService,
+    Session,
+)
 
 
-@pytest.fixture
-def mock_redis_client():
-    client = AsyncMock()
-    # Ensure keys() returns an empty list by default
-    client.keys.return_value = []
-    # Ensure mget returns empty list if no keys
-    client.mget.return_value = []
-    return client
+class TestADKReExports:
+    """Verify that ADK session types are correctly re-exported."""
 
-
-@pytest.fixture
-def session(mock_redis_client):
-    with patch("autopilot.core.session.redis.from_url", return_value=mock_redis_client):
-        return RedisSessionService(
-            redis_url="redis://localhost:6379", session_id="test_sess_123"
+    def test_base_session_service_is_adk(self):
+        from google.adk.sessions import (
+            BaseSessionService as ADKBaseSessionService,
         )
 
+        assert BaseSessionService is ADKBaseSessionService
 
-@pytest.mark.asyncio
-async def test_redis_session_get_missing(session, mock_redis_client):
-    mock_redis_client.get.return_value = None
+    def test_in_memory_session_service_is_adk(self):
+        from google.adk.sessions import (
+            InMemorySessionService as ADKInMemorySessionService,
+        )
 
-    val = await session.get("my_key", default="fallback")
-    assert val == "fallback"
-    mock_redis_client.get.assert_called_once_with(
-        "autopilot:session:test_sess_123:my_key"
-    )
+        assert InMemorySessionService is ADKInMemorySessionService
 
+    def test_session_is_adk(self):
+        from google.adk.sessions import Session as ADKSession
 
-@pytest.mark.asyncio
-async def test_redis_session_set_and_get_dict(session, mock_redis_client):
-    # Setup the set behavior
-    await session.set("user", {"name": "Alice"})
-    mock_redis_client.set.assert_called_once_with(
-        "autopilot:session:test_sess_123:user", '{"name": "Alice"}'
-    )
-
-    # Setup the get behavior
-    mock_redis_client.get.return_value = '{"name": "Alice"}'
-    val = await session.get("user")
-    assert val == {"name": "Alice"}
+        assert Session is ADKSession
 
 
-@pytest.mark.asyncio
-async def test_redis_session_set_and_get_string(session, mock_redis_client):
-    # If the user sets a string, we JSON-encode it anyway to ensure safety based on our code logic
-    # Actually, the code says:
-    # if not isinstance(value, str): value = json.dumps(value)
-    # So if it IS a string, it will be stored as string, but retrieved and tried as JSON.
-    await session.set("token", "abc123yz")
-    mock_redis_client.set.assert_called_once_with(
-        "autopilot:session:test_sess_123:token", "abc123yz"
-    )
+class TestSessionLifecycle:
+    """Tests for ADK InMemorySessionService create/get/list/delete lifecycle."""
 
-    # Setup get
-    mock_redis_client.get.return_value = "abc123yz"
-    val = await session.get("token")
+    @pytest.mark.asyncio
+    async def test_create_and_get_session(self):
+        service = InMemorySessionService()
+        session = await service.create_session(
+            app_name="autopilot",
+            user_id="u1",
+            state={"key": "value"},
+        )
+        assert isinstance(session, Session)
+        assert session.app_name == "autopilot"
+        assert session.user_id == "u1"
+        assert session.state.get("key") == "value"
 
-    # JSON decoding "abc123yz" will fail, and it will return the raw string
-    assert val == "abc123yz"
+        retrieved = await service.get_session(
+            app_name="autopilot",
+            user_id="u1",
+            session_id=session.id,
+        )
+        assert retrieved is not None
+        assert retrieved.id == session.id
 
+    @pytest.mark.asyncio
+    async def test_list_sessions(self):
+        service = InMemorySessionService()
+        await service.create_session(app_name="autopilot", user_id="u1")
+        await service.create_session(app_name="autopilot", user_id="u1")
 
-@pytest.mark.asyncio
-async def test_redis_session_delete(session, mock_redis_client):
-    mock_redis_client.delete.return_value = 1
-    deleted = await session.delete("old_key")
-    assert deleted is True
-    mock_redis_client.delete.assert_called_once_with(
-        "autopilot:session:test_sess_123:old_key"
-    )
+        result = await service.list_sessions(app_name="autopilot", user_id="u1")
+        assert len(result.sessions) == 2
 
+    @pytest.mark.asyncio
+    async def test_delete_session(self):
+        service = InMemorySessionService()
+        session = await service.create_session(app_name="autopilot", user_id="u1")
+        await service.delete_session(
+            app_name="autopilot",
+            user_id="u1",
+            session_id=session.id,
+        )
+        retrieved = await service.get_session(
+            app_name="autopilot",
+            user_id="u1",
+            session_id=session.id,
+        )
+        assert retrieved is None
 
-@pytest.mark.asyncio
-async def test_redis_session_clear(session, mock_redis_client):
-    mock_redis_client.keys.return_value = [
-        "autopilot:session:test_sess_123:k1",
-        "autopilot:session:test_sess_123:k2",
-    ]
+    @pytest.mark.asyncio
+    async def test_get_nonexistent_session_returns_none(self):
+        service = InMemorySessionService()
+        result = await service.get_session(
+            app_name="autopilot",
+            user_id="u1",
+            session_id="nonexistent",
+        )
+        assert result is None
 
-    await session.clear()
-
-    mock_redis_client.keys.assert_called_once_with("autopilot:session:test_sess_123:*")
-    mock_redis_client.delete.assert_called_once_with(
-        "autopilot:session:test_sess_123:k1", "autopilot:session:test_sess_123:k2"
-    )
-
-
-@pytest.mark.asyncio
-async def test_redis_session_snapshot(session, mock_redis_client):
-    mock_redis_client.keys.return_value = [
-        "autopilot:session:test_sess_123:user",
-        "autopilot:session:test_sess_123:count",
-    ]
-    mock_redis_client.mget.return_value = ['{"name": "Alice"}', "42"]
-
-    snapshot = await session.snapshot()
-
-    assert snapshot == {"user": {"name": "Alice"}, "count": 42}
+    @pytest.mark.asyncio
+    async def test_session_state_is_plain_dict(self):
+        """Session.state is a plain dict — no wrappers, no async."""
+        service = InMemorySessionService()
+        session = await service.create_session(
+            app_name="autopilot",
+            user_id="u1",
+            state={"initial": True},
+        )
+        # Direct dict operations — this is the ADK way
+        session.state["new_key"] = "new_value"
+        assert session.state["new_key"] == "new_value"
+        assert session.state.get("initial") is True
+        assert len(session.state) == 2

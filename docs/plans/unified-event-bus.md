@@ -530,25 +530,25 @@ store = InMemoryEventStore()
 bus.use(create_event_store_middleware(store))
 ```
 
-### Phase 4: Distributed Backend — RedisStreamEventBus 🚀
+### Phase 4: Distributed Backend — CloudPubSubEventBus ✅ DONE
 
-**Goal**: Implement a production-grade distributed event bus using Redis Streams. This is the cloud-native backend that solves cross-instance fanout, event persistence, at-least-once delivery, and replay.
+**Goal**: ~~Implement a production-grade distributed event bus using Redis Streams.~~ **IMPLEMENTED** as `CloudPubSubEventBus` (`autopilot/core/bus_pubsub.py`) backed by Google Cloud Pub/Sub. Cloud Pub/Sub was chosen over Redis Streams: fully serverless (no Memorystore needed), scale-to-zero native, already in the stack (Gmail triggers), zero additional infra.
 
-#### Why Redis Streams (Not Cloud Pub/Sub)
+#### Why Cloud Pub/Sub (Updated — Original Plan Was Redis Streams)
 
-| Factor               | Redis Streams                    | Cloud Pub/Sub                        |
-| -------------------- | -------------------------------- | ------------------------------------ |
-| **Latency**          | ~1ms (same-region Memorystore)   | ~50ms (network hop)                  |
-| **Persistence**      | ✅ With TTL (configurable)       | ✅ 7-day retention                   |
-| **Consumer Groups**  | ✅ Native (`XREADGROUP`)         | ✅ Subscriptions                     |
-| **At-least-once**    | ✅ `XACK` pattern                | ✅ Native                            |
-| **Per-message cost** | $0 (flat Memorystore pricing)    | $0.04/1M messages                    |
-| **Event replay**     | ✅ `XRANGE` with ID/timestamp    | ❌ No native replay                  |
-| **Already in infra** | ✅ `RedisSessionService` roadmap | ✅ Used for Gmail triggers           |
-| **Complexity**       | Medium (redis-py async)          | Low (managed)                        |
-| **Best for**         | Internal platform events         | External integrations (already used) |
+| Factor               | Redis Streams                  | Cloud Pub/Sub                            |
+| -------------------- | ------------------------------ | ---------------------------------------- |
+| **Latency**          | ~1ms (same-region Memorystore) | ~50ms (network hop)                      |
+| **Persistence**      | ✅ With TTL (configurable)     | ✅ 7-day retention                       |
+| **Consumer Groups**  | ✅ Native (`XREADGROUP`)       | ✅ Subscriptions                         |
+| **At-least-once**    | ✅ `XACK` pattern              | ✅ Native                                |
+| **Per-message cost** | $0 (flat Memorystore pricing)  | $0.04/1M messages (10GB free/month)      |
+| **Event replay**     | ✅ `XRANGE` with ID/timestamp  | ✅ Seek API                              |
+| **Already in infra** | ❌ No Redis instance deployed  | ✅ Used for Gmail triggers               |
+| **Serverless**       | ❌ Requires Cloud Memorystore  | ✅ Fully managed, pay-per-use            |
+| **Scale-to-zero**    | ❌ Instance must stay running  | ✅ Native, retains msgs with 0 consumers |
 
-**Verdict**: Redis Streams for internal events (low latency, replay, same infra as sessions). Cloud Pub/Sub stays for external triggers (Gmail webhooks — already working).
+**Updated Verdict**: Cloud Pub/Sub for all events (internal + external). Hybrid dispatch model ensures zero-latency local delivery + Pub/Sub persistence.
 
 #### Step 4.1: Implement `RedisStreamEventBus`
 

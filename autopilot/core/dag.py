@@ -107,6 +107,9 @@ class DAGRunner:
         if initial_input:
             ctx.update_state(initial_input)
 
+        # Initialize ADK session lazily
+        await ctx.ensure_session()
+
         result = PipelineExecutionResult(execution_id=ctx.execution_id)
         start = time.monotonic()
 

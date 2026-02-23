@@ -25,7 +25,11 @@ from autopilot.core.agent import (
 from autopilot.core.pipeline import Pipeline, PipelineBuilder
 from autopilot.core.dag import DAGBuilder, DAGRunner
 from autopilot.core.orchestrator import OrchestrationStrategy
-from autopilot.core.session import BaseSessionService, InMemorySessionService
+from autopilot.core.session import (
+    BaseSessionService,
+    InMemorySessionService,
+    Session,
+)
 from autopilot.core.memory import (
     BaseMemoryService,
     InMemoryMemoryService,
@@ -44,6 +48,7 @@ from autopilot.core.bus import (
     EventBusProtocol,
     AgentMessage,
     Subscription,
+    create_event_bus,
     get_event_bus,
     reset_event_bus,
 )
@@ -75,6 +80,7 @@ __all__ = [
     "OrchestrationStrategy",
     "BaseSessionService",
     "InMemorySessionService",
+    "Session",
     "BaseMemoryService",
     "InMemoryMemoryService",
     "Observation",
@@ -90,6 +96,7 @@ __all__ = [
     "EventBusProtocol",
     "AgentMessage",
     "Subscription",
+    "create_event_bus",
     "get_event_bus",
     "reset_event_bus",
     # V3 Phase 5b — Subscriber Registry

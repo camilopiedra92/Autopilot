@@ -9,6 +9,7 @@
 We build **World-Class, Edge-First, Agentic Systems**.
 
 - **Headless API Topology**: The system is a pure backend API (JSON/Events). There is **NO** internal frontend or dashboard. All interactions occur via strictly secured API endpoints (`X-API-Key`) or trusted Webhooks (Pub/Sub).
+  - **CORS disabled by default**: Since all clients are server-to-server (Pub/Sub, Cloud Scheduler, API keys), `CORSMiddleware` is **not mounted** unless `API_CORS_ORIGINS` is explicitly set. This prevents any browser origin from making cross-site requests to the API. Opt-in via `API_CORS_ORIGINS=https://admin.example.com`.
 - **Edge-First**: Logic should run as close to the data/user as possible. We use lightweight, efficient patterns without monolithic state.
 - **Agentic**: The system is composed of autonomous, intelligent agents that interact via standard protocols.
 - **Google ADK Alignment**: We strictly follow the Google Agent Development Kit (ADK) patterns.
@@ -141,9 +142,9 @@ The platform provides typed, observable primitives for building agentic workflow
 | `ReactRunner`             | Agentic Reason-Act-Observe orchestration loop                                    |
 | `RouterRunner`            | Semantic routing to sub-workflows based on intent                                |
 | `OrchestrationStrategy`   | Enum: `SEQUENTIAL`, `DAG`, `REACT`, `ROUTER`                                     |
-| `BaseSessionService`      | ABC for short-term KV state scoped to an execution                               |
-| `InMemorySessionService`  | Dict-backed session (auto-provisioned in `AgentContext`)                         |
-| `RedisSessionService`     | Redis-backed distributed session state for edge deployments                      |
+| `BaseSessionService`      | ADK-native ABC — re-exported from `google.adk.sessions` (create/get/list/delete) |
+| `InMemorySessionService`  | ADK-native dict-backed session (auto-provisioned in `AgentContext`)              |
+| `Session`                 | ADK Pydantic model — `id`, `app_name`, `user_id`, `state`, `events`              |
 | `BaseMemoryService`       | ABC for long-term semantic memory across executions                              |
 | `InMemoryMemoryService`   | TF-IDF + cosine similarity memory (zero external deps)                           |
 | `ChromaMemoryService`     | Persistent vector DB memory via ChromaDB                                         |
@@ -406,24 +407,30 @@ class MyDagWorkflow(BaseWorkflow):
         )
 ```
 
-### Session & Memory Layer (Stateless Edge Backends)
+### Session & Memory Layer (ADK-Native + Stateless Edge Backends)
 
-Every `AgentContext` includes **session** (short-term KV state) and **memory** (long-term semantic recall).
+Every `AgentContext` includes **session** (ADK `Session` object) and **memory** (long-term semantic recall).
 
-- In development, they default to `InMemorySessionService` and `InMemoryMemoryService`.
-- **In production** on edge environments (Cloud Run, K8s), they must be swapped to the clustered variants: `RedisSessionService` and `ChromaMemoryService` to prevent state loss across ephemeral container routing.
+- Session uses Google ADK's native `SessionService` contract — `create_session()`, `get_session()`, `list_sessions()`, `delete_session()`, `append_event()`.
+- `ctx.session` **is** the ADK `Session` directly — `ctx.session.state` is a plain dict, no async wrappers.
+- In development, `InMemorySessionService` is auto-provisioned. In production, implement ADK's `BaseSessionService` ABC with Firestore or another durable backend.
+- Memory defaults to `InMemoryMemoryService`. For production, swap to `ChromaMemoryService` or Vertex AI Search.
 
 ```python
-from autopilot.core import AgentContext, InMemoryMemoryService
+from autopilot.core import AgentContext
 
 # Auto-provisioned — just works
 ctx = AgentContext(pipeline_name="bank_to_ynab")
 
-# Inside any agent:
+# Inside any agent (after ensure_session() is called by Pipeline/DAG):
 async def run(self, ctx, input):
-    # Short-term session: share state within a pipeline run
-    await ctx.session.set("user_timezone", "EST")
-    tz = await ctx.session.get("user_timezone")
+    # Short-term session: ADK Session.state is a plain dict
+    ctx.session.state["user_timezone"] = "EST"
+    tz = ctx.session.state.get("user_timezone")
+
+    # Full ADK session metadata is always available
+    session_id = ctx.session.id
+    app_name = ctx.session.app_name
 
     # Long-term memory: persist observations across executions
     await ctx.remember("User prefers dark mode", {"agent": self.name})
@@ -445,17 +452,19 @@ ctx2 = AgentContext(pipeline_name="run_2", memory=shared_memory)
 results = await ctx2.recall("previous transactions")
 ```
 
-| Component              | Purpose                                               |
-| ---------------------- | ----------------------------------------------------- |
-| `BaseSessionService`   | ABC — swap with `RedisSessionService` for prod        |
-| `BaseMemoryService`    | ABC — swap with ChromaDB or Vertex AI Search for prod |
-| `ctx.remember(text)`   | Convenience → `memory.add_observation()`              |
-| `ctx.recall(query)`    | Convenience → `memory.search_relevant()`              |
-| `ctx.session.get/set`  | Direct KV access on the session service               |
-| `ctx.tools`            | Access the global `ToolRegistry` from any agent       |
-| `ctx.bus`              | Access the global `EventBus` for A2A messaging        |
-| `ctx.publish(topic)`   | Convenience → `bus.publish()` with auto-sender        |
-| `ctx.subscribe(topic)` | Convenience → `bus.subscribe()`                       |
+| Component              | Purpose                                                             |
+| ---------------------- | ------------------------------------------------------------------- |
+| `BaseSessionService`   | ADK ABC — re-exported from `google.adk.sessions`                    |
+| `Session`              | ADK Pydantic model (`id`, `app_name`, `user_id`, `state`, `events`) |
+| `ctx.session`          | The ADK `Session` object — `ctx.session.state` is a plain dict      |
+| `ctx.session_service`  | ADK `SessionService` — full lifecycle (create/get/list/delete)      |
+| `BaseMemoryService`    | ABC — swap with ChromaDB or Vertex AI Search for prod               |
+| `ctx.remember(text)`   | Convenience → `memory.add_observation()`                            |
+| `ctx.recall(query)`    | Convenience → `memory.search_relevant()`                            |
+| `ctx.tools`            | Access the global `ToolRegistry` from any agent                     |
+| `ctx.bus`              | Access the global `EventBus` for A2A messaging                      |
+| `ctx.publish(topic)`   | Convenience → `bus.publish()` with auto-sender                      |
+| `ctx.subscribe(topic)` | Convenience → `bus.subscribe()`                                     |
 
 ### Scale-to-Zero and Long-Lived Subscriptions
 
@@ -695,10 +704,34 @@ def create_batch_transactions(transactions: list[dict]) -> dict:
 
 The `EventBus` provides typed, async pub/sub messaging for decoupled inter-agent communication. It implements the `EventBusProtocol` ABC, supports a middleware chain (`bus.use(fn)`), and includes `replay()` for late-joining subscribers. Any agent can publish events and any number of subscribers receive them concurrently.
 
+#### Backend Selection (12-Factor Config-Driven)
+
+The bus backend is selected via `EVENTBUS_BACKEND` env var using `create_event_bus()`:
+
+| Environment    | Backend               | `EVENTBUS_BACKEND` | Why                                         |
+| -------------- | --------------------- | ------------------ | ------------------------------------------- |
+| **Unit Tests** | `EventBus` (memory)   | `memory` (default) | Zero deps, deterministic, instant           |
+| **Local Dev**  | `EventBus` (memory)   | `memory` (default) | Single instance — cross-instance irrelevant |
+| **Production** | `CloudPubSubEventBus` | `pubsub`           | Persistence, cross-instance, scale-to-zero  |
+
+```python
+from autopilot.core.bus import create_event_bus, get_event_bus
+
+# Singleton — reads EVENTBUS_BACKEND env var (default: "memory")
+bus = get_event_bus()
+```
+
+`CloudPubSubEventBus` uses a **hybrid dispatch** model:
+
+1. **Local dispatch** — in-process subscribers fire immediately via `asyncio.gather` (zero latency)
+2. **Cloud Pub/Sub** — fire-and-forget publish for persistence + cross-instance fanout
+
+This means existing workflows fire instantly within the same request — Pub/Sub only adds durability.
+
 #### Publishing & Subscribing
 
 ```python
-from autopilot.core import EventBus, get_event_bus
+from autopilot.core import get_event_bus
 
 bus = get_event_bus()
 
@@ -729,15 +762,15 @@ async def run(self, ctx, input):
     recent = ctx.bus.history("agent.error", limit=10)
 ```
 
-| Feature                   | Description                                                  |
-| ------------------------- | ------------------------------------------------------------ |
-| **Wildcard topics**       | `fnmatch` patterns: `"agent.*"`, `"*.error"`, `"?"`          |
-| **Dead-letter isolation** | Handler exceptions are logged, never block other subscribers |
-| **Middleware chain**      | `bus.use(fn)` — intercept/transform events before delivery   |
-| **Replay**                | `bus.replay(topic, handler)` — replay history to new subs    |
-| **Per-topic history**     | Ring buffer (`deque(maxlen=100)`) for replay/debug           |
-| **Concurrent dispatch**   | Handlers run via `asyncio.gather` per publish call           |
-| **Singleton**             | `get_event_bus()` / `reset_event_bus()`                      |
+| Feature                   | Description                                                    |
+| ------------------------- | -------------------------------------------------------------- |
+| **Wildcard topics**       | `fnmatch` patterns: `"agent.*"`, `"*.error"`, `"?"`            |
+| **Dead-letter isolation** | Handler exceptions are logged, never block other subscribers   |
+| **Middleware chain**      | `bus.use(fn)` — intercept/transform events before delivery     |
+| **Replay**                | `bus.replay(topic, handler)` — replay history to new subs      |
+| **Per-topic history**     | Ring buffer (`deque(maxlen=100)`) for replay/debug             |
+| **Concurrent dispatch**   | Handlers run via `asyncio.gather` per publish call             |
+| **Factory + Singleton**   | `create_event_bus()` / `get_event_bus()` / `reset_event_bus()` |
 
 #### `ctx` Injection in Pipeline Steps
 
@@ -1010,7 +1043,7 @@ autopilot/                        # Core platform logic
 │   ├── react.py                  # ReactRunner
 │   ├── router.py                 # RouterRunner
 │   ├── orchestrator.py           # OrchestrationStrategy enum
-│   ├── session.py                # RedisSessionService, InMemorySessionService
+│   ├── session.py                # ADK re-exports: BaseSessionService, InMemorySessionService, Session
 │   ├── memory.py                 # ChromaMemoryService, InMemoryMemoryService
 │   ├── context.py                # AgentContext (session, memory, tools, bus auto-provisioned)
 │   ├── bus.py                    # V3 Phase 5 — EventBus (EventBusProtocol), AgentMessage, Subscription
