@@ -40,10 +40,21 @@ def test_k_service_env_overrides_default():
     """K_SERVICE env var (Cloud Run) should override the default."""
     from autopilot.observability import setup_tracing
 
+    mock_exporter = MagicMock()
+    mock_class = MagicMock(return_value=mock_exporter)
+
     with patch.dict("os.environ", {"K_SERVICE": "my-cloud-run-svc"}, clear=True):
         with patch("autopilot.observability.BatchSpanProcessor"):
-            tracer = setup_tracing()
-            assert tracer is not None
+            with patch.dict(
+                "sys.modules",
+                {
+                    "opentelemetry.exporter.cloud_trace": MagicMock(
+                        CloudTraceSpanExporter=mock_class
+                    )
+                },
+            ):
+                tracer = setup_tracing()
+                assert tracer is not None
 
     provider = trace.get_tracer_provider()
     resource = provider.resource  # type: ignore[attr-defined]
@@ -54,10 +65,21 @@ def test_explicit_service_name_overrides_all():
     """Explicit service_name arg should override both env and default."""
     from autopilot.observability import setup_tracing
 
+    mock_exporter = MagicMock()
+    mock_class = MagicMock(return_value=mock_exporter)
+
     with patch.dict("os.environ", {"K_SERVICE": "ignored"}, clear=True):
         with patch("autopilot.observability.BatchSpanProcessor"):
-            tracer = setup_tracing(service_name="custom-name")
-            assert tracer is not None
+            with patch.dict(
+                "sys.modules",
+                {
+                    "opentelemetry.exporter.cloud_trace": MagicMock(
+                        CloudTraceSpanExporter=mock_class
+                    )
+                },
+            ):
+                tracer = setup_tracing(service_name="custom-name")
+                assert tracer is not None
 
     provider = trace.get_tracer_provider()
     resource = provider.resource  # type: ignore[attr-defined]
