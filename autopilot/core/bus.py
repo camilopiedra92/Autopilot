@@ -1,21 +1,32 @@
 """
-Agent Bus — Typed pub/sub messaging for inter-agent communication (A2A).
+EventBus — Unified typed pub/sub messaging for the Autopilot platform.
 
-Provides a lightweight, async message bus that enables decoupled,
-topic-based communication between agents.  Any agent (or platform
-component) can publish typed messages to a topic, and any number
-of subscribers receive them concurrently.
+The single event backbone that handles ALL event communication:
+  - Inter-agent messaging (A2A)
+  - Pipeline/stage/tool observability events
+  - External trigger routing (email.received, webhook.*)
+  - Reactive subscribers (transaction.created → Telegram)
 
 Key features:
-  - Typed messages via ``AgentMessage`` (Pydantic model)
-  - Wildcard topic matching (``"agent.*"`` matches ``"agent.error"``)
-  - Dead-letter logging: handler errors are logged, never block others
-  - Per-topic ring-buffer history for debugging / replay
-  - Singleton accessor: ``get_agent_bus()``
+  - ``EventBusProtocol`` ABC for swappable backends
+  - ``EventBus`` — in-memory implementation (dev/test/single-instance prod)
+  - Typed messages via ``AgentMessage`` (Pydantic)
+  - Wildcard topic matching (``"agent.*"`` → ``"agent.error"``)
+  - Dead-letter isolation: handler errors never block others
+  - Per-topic ring-buffer history for replay/debug
+  - Middleware chain for event persistence, filtering, metrics
+  - Singleton accessor: ``get_event_bus()``
+
+Topic naming convention: ``domain.verb``
+  - ``pipeline.started``, ``pipeline.completed``, ``pipeline.error``
+  - ``stage.started``, ``stage.completed``
+  - ``tool.started``, ``tool.completed``
+  - ``email.received``, ``transaction.created``
+  - ``agent.error``, ``agent.completed``
 
 Usage::
 
-    bus = get_agent_bus()
+    bus = get_event_bus()
 
     # Subscribe
     async def on_error(msg: AgentMessage) -> None:
@@ -26,18 +37,20 @@ Usage::
     # Publish
     await bus.publish("agent.error", {"detail": "timeout"}, sender="parser")
 
+    # Middleware (persistence, metrics, filtering)
+    async def log_all(msg: AgentMessage) -> AgentMessage | None:
+        logger.info("event", topic=msg.topic)
+        return msg  # Pass through (return None to filter)
+
+    bus.use(log_all)
+
     # Unsubscribe
     bus.unsubscribe(sub)
-
-Design:
-  - Pure asyncio — no external broker required.
-  - Handlers execute concurrently via ``asyncio.gather``.
-  - Topic wildcards use ``fnmatch`` (stdlib, zero dependencies).
-  - Thread-safe via asyncio Lock (no thread-local hacks).
 """
 
 from __future__ import annotations
 
+import abc
 import asyncio
 import fnmatch
 import structlog
@@ -61,7 +74,7 @@ tracer = trace.get_tracer(__name__)
 
 class AgentMessage(BaseModel):
     """
-    Typed message envelope for the Agent Bus.
+    Typed message envelope for the Event Bus.
 
     Every message published through the bus is wrapped in this model,
     giving consumers a consistent, introspectable structure.
@@ -87,16 +100,17 @@ class AgentMessage(BaseModel):
 #  Subscription — Handle for unsubscribing
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# Type alias for handler functions
+# Type aliases
 MessageHandler = Callable[[AgentMessage], Awaitable[None]]
+EventMiddleware = Callable[[AgentMessage], Awaitable[AgentMessage | None]]
 
 
 @dataclass(frozen=True)
 class Subscription:
     """
-    Opaque handle returned by ``AgentBus.subscribe()``.
+    Opaque handle returned by ``EventBus.subscribe()``.
 
-    Pass this to ``AgentBus.unsubscribe()`` to remove the subscription.
+    Pass this to ``EventBus.unsubscribe()`` to remove the subscription.
     """
 
     id: str = field(default_factory=lambda: uuid4().hex[:12])
@@ -105,26 +119,103 @@ class Subscription:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  AgentBus — The pub/sub bus
+#  EventBusProtocol — Abstract contract for swappable backends
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# Default max messages per topic in history ring buffer
+
+class EventBusProtocol(abc.ABC):
+    """
+    Abstract Event Bus protocol — swappable backends.
+
+    All event bus implementations MUST implement this interface.
+    Aligned with Google ADK's event streaming model.
+
+    Implementations:
+      - EventBus (InMemory): dev/test/single-instance — asyncio, zero deps
+      - RedisStreamEventBus: production — Redis Streams, consumer groups
+      - CloudPubSubEventBus: future — GCP Pub/Sub, fully managed
+    """
+
+    @abc.abstractmethod
+    def subscribe(
+        self, topic_pattern: str, handler: MessageHandler
+    ) -> Subscription: ...
+
+    @abc.abstractmethod
+    def unsubscribe(self, subscription: Subscription) -> bool: ...
+
+    @abc.abstractmethod
+    async def publish(
+        self,
+        topic: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        sender: str = "",
+        correlation_id: str | None = None,
+    ) -> AgentMessage: ...
+
+    @abc.abstractmethod
+    def history(
+        self, topic: str, *, limit: int = 50
+    ) -> list[AgentMessage]: ...
+
+    @abc.abstractmethod
+    async def replay(
+        self,
+        topic: str,
+        *,
+        since: str | None = None,
+        handler: MessageHandler | None = None,
+    ) -> list[AgentMessage]:
+        """Replay events from history/store for a topic.
+
+        In-memory: replays from ring buffer history.
+        Redis/Pub/Sub: replays from persistent stream with optional cursor.
+
+        Args:
+            topic: Topic pattern to replay.
+            since: Optional ISO-8601 timestamp to replay from.
+            handler: Optional handler to invoke for each replayed event.
+
+        Returns:
+            List of replayed AgentMessage objects.
+        """
+        ...
+
+    @abc.abstractmethod
+    def clear(self) -> None: ...
+
+    @property
+    @abc.abstractmethod
+    def subscription_count(self) -> int: ...
+
+    @property
+    @abc.abstractmethod
+    def stats(self) -> dict[str, int]: ...
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  EventBus — In-memory implementation
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 _DEFAULT_HISTORY_LIMIT = 100
 
 
-class AgentBus:
+class EventBus(EventBusProtocol):
     """
-    Async pub/sub message bus for inter-agent communication.
+    In-memory event bus for the Autopilot platform.
 
-    Agents publish typed ``AgentMessage`` objects to topics.
-    Subscribers register handlers that are invoked concurrently
-    for each matching message.
+    Correct for single-instance Cloud Run (scale-to-zero) because:
+      - Subscriptions are re-registered on every cold start via setup()
+      - Each HTTP request is self-contained within a single instance
+      - History is only needed for debugging within a single lifecycle
 
     Features:
       - **Topic wildcards**: ``"agent.*"`` matches ``"agent.error"``
       - **Dead-letter logging**: handler exceptions are logged, not propagated
-      - **Per-topic history**: ring buffer of recent messages for replay/debug
+      - **Per-topic history**: ring buffer for replay/debug
       - **Concurrent dispatch**: handlers run via ``asyncio.gather``
+      - **Middleware chain**: intercept, filter, persist events
     """
 
     def __init__(self, *, history_limit: int = _DEFAULT_HISTORY_LIMIT) -> None:
@@ -133,6 +224,20 @@ class AgentBus:
         self._history_limit = history_limit
         self._lock = asyncio.Lock()
         self._stats = {"published": 0, "delivered": 0, "errors": 0}
+        self._middleware: list[EventMiddleware] = []
+
+    # ── Middleware ────────────────────────────────────────────────────
+
+    def use(self, middleware: EventMiddleware) -> None:
+        """Register middleware that intercepts every published event.
+
+        Middleware runs in order before dispatch. If middleware returns None,
+        the event is suppressed (filtered). Otherwise the returned event
+        (possibly modified) is dispatched.
+
+        Use cases: event logging, metrics, persistence, filtering.
+        """
+        self._middleware.append(middleware)
 
     # ── Subscribe ────────────────────────────────────────────────────
 
@@ -175,7 +280,7 @@ class AgentBus:
             subscription: The ``Subscription`` handle from ``subscribe()``.
 
         Returns:
-            ``True`` if the subscription was found and removed, ``False`` otherwise.
+            ``True`` if found and removed, ``False`` otherwise.
         """
         removed = self._subscriptions.pop(subscription.id, None)
         if removed:
@@ -195,11 +300,11 @@ class AgentBus:
         """
         Publish a typed message to a topic.
 
-        Builds an ``AgentMessage`` and dispatches it to all handlers
-        whose ``topic_pattern`` matches the given ``topic``.
+        Builds an ``AgentMessage``, runs middleware chain, then dispatches
+        to all handlers whose ``topic_pattern`` matches.
 
         Args:
-            topic: The topic to publish to (e.g. ``"agent.completed"``).
+            topic: The topic to publish to (e.g. ``"pipeline.started"``).
             payload: Arbitrary data dictionary.
             sender: Identifier of the publishing agent.
             correlation_id: Optional correlation ID for tracing.
@@ -214,6 +319,13 @@ class AgentBus:
             **({"correlation_id": correlation_id} if correlation_id else {}),
         )
 
+        # Run middleware chain
+        for mw in self._middleware:
+            result = await mw(msg)
+            if result is None:
+                return msg  # Filtered by middleware
+            msg = result
+
         # Record in history
         async with self._lock:
             if topic not in self._history:
@@ -223,11 +335,11 @@ class AgentBus:
         self._stats["published"] += 1
 
         # Find matching handlers
-        matching: list[MessageHandler] = []
-        for sub in self._subscriptions.values():
-            if fnmatch.fnmatch(topic, sub.topic_pattern):
-                if sub.handler is not None:
-                    matching.append(sub.handler)
+        matching: list[MessageHandler] = [
+            sub.handler
+            for sub in self._subscriptions.values()
+            if sub.handler is not None and fnmatch.fnmatch(topic, sub.topic_pattern)
+        ]
 
         with tracer.start_as_current_span(
             "bus.publish",
@@ -269,7 +381,7 @@ class AgentBus:
 
         return msg
 
-    # ── History ──────────────────────────────────────────────────────
+    # ── History & Replay ─────────────────────────────────────────────
 
     def history(
         self,
@@ -292,6 +404,37 @@ class AgentBus:
             return []
         return list(buf)[-limit:][::-1]
 
+    async def replay(
+        self,
+        topic: str,
+        *,
+        since: str | None = None,
+        handler: MessageHandler | None = None,
+    ) -> list[AgentMessage]:
+        """Replay events from in-memory history buffer.
+
+        Args:
+            topic: Exact topic to replay from.
+            since: Optional ISO-8601 timestamp — only replay events after this.
+            handler: Optional async handler to invoke for each replayed event.
+
+        Returns:
+            List of replayed AgentMessage objects (oldest first).
+        """
+        buf = self._history.get(topic)
+        if buf is None:
+            return []
+
+        messages = list(buf)
+        if since:
+            messages = [m for m in messages if m.timestamp > since]
+
+        if handler:
+            for msg in messages:
+                await self._safe_invoke(handler, msg)
+
+        return messages
+
     # ── Introspection ────────────────────────────────────────────────
 
     @property
@@ -307,9 +450,10 @@ class AgentBus:
     # ── Reset ────────────────────────────────────────────────────────
 
     def clear(self) -> None:
-        """Remove all subscriptions and history. Useful for tests."""
+        """Remove all subscriptions, history, and middleware. Useful for tests."""
         self._subscriptions.clear()
         self._history.clear()
+        self._middleware.clear()
         self._stats = {"published": 0, "delivered": 0, "errors": 0}
         logger.debug("bus_cleared")
 
@@ -323,8 +467,8 @@ class AgentBus:
         """
         Invoke a handler with dead-letter isolation.
 
-        If the handler raises, the exception is logged but not propagated.
-        This ensures one failing subscriber never blocks others.
+        If the handler raises, the exception is logged but not propagated
+        to other subscribers. This ensures one failure never blocks others.
         """
         with tracer.start_as_current_span(
             "bus.handler",
@@ -350,31 +494,34 @@ class AgentBus:
                 raise  # Re-raise so asyncio.gather can collect it
 
     def __repr__(self) -> str:
-        return f"AgentBus(subscriptions={self.subscription_count}, stats={self._stats})"
+        return (
+            f"EventBus(subscriptions={self.subscription_count}, "
+            f"middleware={len(self._middleware)}, stats={self._stats})"
+        )
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  Singleton — Module-level accessor
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-_agent_bus: AgentBus | None = None
+_event_bus: EventBus | None = None
 
 
-def get_agent_bus() -> AgentBus:
-    """Get or create the global AgentBus singleton."""
-    global _agent_bus
-    if _agent_bus is None:
-        _agent_bus = AgentBus()
-    return _agent_bus
+def get_event_bus() -> EventBus:
+    """Get or create the global EventBus singleton."""
+    global _event_bus
+    if _event_bus is None:
+        _event_bus = EventBus()
+    return _event_bus
 
 
-def reset_agent_bus() -> None:
+def reset_event_bus() -> None:
     """
-    Reset the global AgentBus singleton.
+    Reset the global EventBus singleton.
 
     Useful in tests to ensure a clean bus between test cases.
     """
-    global _agent_bus
-    if _agent_bus is not None:
-        _agent_bus.clear()
-    _agent_bus = None
+    global _event_bus
+    if _event_bus is not None:
+        _event_bus.clear()
+    _event_bus = None

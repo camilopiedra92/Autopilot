@@ -129,6 +129,7 @@ The platform provides typed, observable primitives for building agentic workflow
 | `BaseAgent[In, Out]`      | Strictly typed agent contract with `invoke()` lifecycle                          |
 | `FunctionalAgent`         | Auto-wraps plain Python functions as agents                                      |
 | `ADKAgent`                | Bridges Google ADK `LlmAgent` into the platform contract (state-priority output) |
+| `ADKRunner`               | Executes native ADK agents via `Runner` + `SessionService` with retry/tracing    |
 | `SequentialAgentAdapter`  | Runs child agents in sequence, accumulating state (ADK `SequentialAgent`)        |
 | `LoopAgentAdapter`        | Retries a body agent until exit condition met (ADK `LoopAgent`)                  |
 | `ParallelAgentAdapter`    | Runs branches concurrently via `asyncio.gather` (ADK `ParallelAgent`)            |
@@ -156,7 +157,7 @@ The platform provides typed, observable primitives for building agentic workflow
 | `OperationTracker`        | Lifecycle tracking for long-running tool operations                              |
 | `MCPBridge`               | Platform wrapper for connecting to external MCP servers                          |
 | `MCPRegistry`             | Multi-MCP-server lifecycle management                                            |
-| `AgentBus`                | Typed pub/sub message bus for inter-agent communication (A2A)                    |
+| `EventBus`                | Unified pub/sub message bus with middleware chain and replay (A2A)               |
 | `AgentMessage`            | Pydantic envelope: topic, sender, payload, correlation_id                        |
 | `Subscription`            | Opaque handle for unsubscribing from the bus                                     |
 | `DSLWorkflowDef`          | Pydantic schema for declarative YAML workflow definitions                        |
@@ -452,7 +453,7 @@ results = await ctx2.recall("previous transactions")
 | `ctx.recall(query)`    | Convenience → `memory.search_relevant()`              |
 | `ctx.session.get/set`  | Direct KV access on the session service               |
 | `ctx.tools`            | Access the global `ToolRegistry` from any agent       |
-| `ctx.bus`              | Access the global `AgentBus` for A2A messaging        |
+| `ctx.bus`              | Access the global `EventBus` for A2A messaging        |
 | `ctx.publish(topic)`   | Convenience → `bus.publish()` with auto-sender        |
 | `ctx.subscribe(topic)` | Convenience → `bus.subscribe()`                       |
 
@@ -463,19 +464,28 @@ Cloud Run deployments use **scale-to-zero** (`min-instances=0`) for cost efficie
 **The Deadlock Problem:**
 
 1. Instance scales to zero after idle period.
-2. Watch expires (~7 days).
+2. Watch expires (~7 days) or is actively destroyed by bad graceful shutdown logic.
 3. Gmail stops sending Pub/Sub notifications.
 4. No notifications → no HTTP requests → instance never wakes up → watch never renews.
 
-**The Architectural Solution (Cloud Scheduler + Watch Stealing):**
+**The Architectural Solution (Cloud Scheduler + Watch Stealing + Watch Persistence):**
 
 ⛔️ **NEVER** use in-process background tasks (`asyncio.create_task`, `while True` loops) for renewal in ephemeral compute. They die silently on scale-to-zero.
-✅ **ALWAYS** rely on external, managed schedulers.
+⛔️ **NEVER** unregister watches in graceful teardowns. If `teardown()` stops the watch, the next email will never trigger a scale-up. The watch MUST outlive the instance.
+✅ **ALWAYS** rely on external, managed schedulers and treat the watch as a persistent cloud resource.
 
-1. **Idempotent Setup**: The connector's `setup()` method idempotently re-registers the watch on _every_ cold start.
-2. **HTTP Renew Endpoint**: The platform exposes `POST /gmail/watch/renew`.
-3. **Cloud Scheduler (`ping-bank-to-ynab`)**: Pings the renew endpoint daily (9:00 UTC), forcing the instance to wake and execute renewal, breaking the deadlock permanently. No in-process background tasks exist.
-4. **Auto-Recovery (Watch Stealing)**: Gmail allows only one push notification webhook per developer account. If `watch()` throws an `"Only one user push notification client allowed"` error (typically from local testing), the production connector **intercepts** it, calls `stop()` to "steal" back exclusivity, and retries. This ensures zero downtime regardless of local testing.
+1. **Watch Persistence (No Teardown)**: The connector's `teardown()` hook intentionally **skips** stopping the watch. The subscription remains alive in Gmail's infrastructure while Cloud Run sleeps.
+2. **Idempotent Setup**: The connector's `setup()` method idempotently re-registers the watch on _every_ cold start to ensure the `historyId` baseline is established.
+3. **HTTP Renew Endpoint**: The platform exposes `POST /gmail/watch/renew`.
+4. **Cloud Scheduler (`ping-bank-to-ynab`)**: Pings the renew endpoint daily (9:00 UTC), forcing the instance to wake and execute renewal, breaking the deadlock permanently. No in-process background tasks exist.
+5. **Auto-Recovery (Watch Stealing)**: Gmail allows only one push notification webhook per developer account. If `watch()` throws an `"Only one user push notification client allowed"` error (typically from local testing), the production connector **intercepts** it, calls `stop()` to "steal" back exclusivity, and retries. This ensures zero downtime regardless of local testing.
+
+### Gmail API Quirks: Push Notifications & History API
+
+When tracking specific labels via Gmail Push Notifications, developers often encounter excessive API quota usage during scale-ups. The architecture enforces strict mitigations:
+
+1. **Global History IDs**: The `historyId` provided by a Gmail Push webhook is a **global mailbox ID**. It increments even if the change occurred outside the watched `labelIds`.
+2. **The `history.list` Optimization**: When calling `history.list(startHistoryId=X)`, you **must** explicitly pass the `labelId=watched_label` argument. Failing to do so forces the system to fetch and process _every single email_ that arrived in the entire mailbox since the last cold start, wasting significant API quota and extending latency. Filtering is pushed to the Google API layer, not the local runtime layer.
 
 ### Tool Ecosystem (Phase 4)
 
@@ -681,16 +691,16 @@ def create_batch_transactions(transactions: list[dict]) -> dict:
 | `OperationTracker`   | In-memory lifecycle: create → running → completed    |
 | `OperationStatus`    | Dataclass: operation_id, status, result, error, time |
 
-### Agent Bus — A2A Communication (Phase 5)
+### Unified Event Bus — A2A Communication (Phase 5)
 
-The `AgentBus` provides typed, async pub/sub messaging for decoupled inter-agent communication. Any agent can publish events and any number of subscribers receive them concurrently.
+The `EventBus` provides typed, async pub/sub messaging for decoupled inter-agent communication. It implements the `EventBusProtocol` ABC, supports a middleware chain (`bus.use(fn)`), and includes `replay()` for late-joining subscribers. Any agent can publish events and any number of subscribers receive them concurrently.
 
 #### Publishing & Subscribing
 
 ```python
-from autopilot.core import AgentBus, get_agent_bus
+from autopilot.core import EventBus, get_event_bus
 
-bus = get_agent_bus()
+bus = get_event_bus()
 
 # Subscribe (supports wildcards: "agent.*", "*", "agent.?")
 async def on_error(msg):
@@ -723,9 +733,11 @@ async def run(self, ctx, input):
 | ------------------------- | ------------------------------------------------------------ |
 | **Wildcard topics**       | `fnmatch` patterns: `"agent.*"`, `"*.error"`, `"?"`          |
 | **Dead-letter isolation** | Handler exceptions are logged, never block other subscribers |
+| **Middleware chain**      | `bus.use(fn)` — intercept/transform events before delivery   |
+| **Replay**                | `bus.replay(topic, handler)` — replay history to new subs    |
 | **Per-topic history**     | Ring buffer (`deque(maxlen=100)`) for replay/debug           |
 | **Concurrent dispatch**   | Handlers run via `asyncio.gather` per publish call           |
-| **Singleton**             | `get_agent_bus()` / `reset_agent_bus()`                      |
+| **Singleton**             | `get_event_bus()` / `reset_event_bus()`                      |
 
 #### `ctx` Injection in Pipeline Steps
 
@@ -742,7 +754,7 @@ async def my_step(ctx: AgentContext, payee: str, **state) -> dict:
 
 #### SubscriberRegistry — Reactive Event Handlers (Phase 5b)
 
-The `SubscriberRegistry` manages lifecycle of event subscribers at the platform level. Workflows register handlers during their `setup()` lifecycle hook — the registry wires them to the global `AgentBus`.
+The `SubscriberRegistry` manages lifecycle of event subscribers at the platform level. Workflows register handlers during their `setup()` lifecycle hook — the registry wires them to the global `EventBus`.
 
 ```python
 from autopilot.core.subscribers import get_subscriber_registry
@@ -767,7 +779,7 @@ registry.unregister_all()
 
 #### Event-Driven Triggers — Publish + Await (Phase 5c)
 
-External triggers (Gmail Pub/Sub, webhooks) are **thin event adapters** that publish typed events to the AgentBus. Workflows react as subscribers and self-match using their manifest trigger config. The bus `await`s all subscribers before the HTTP response, ensuring Pub/Sub only ACKs after full processing.
+External triggers (Gmail Pub/Sub, webhooks) are **thin event adapters** that publish typed events to the EventBus. Workflows react as subscribers and self-match using their manifest trigger config. The bus `await`s all subscribers before the HTTP response, ensuring Pub/Sub only ACKs after full processing.
 
 ```
 Pub/Sub Push → webhook (thin adapter)
@@ -775,7 +787,7 @@ Pub/Sub Push → webhook (thin adapter)
                   ▼
           bus.publish("email.received", payload)
                   │
-                  ▼ (AgentBus — in-process, asyncio.gather)
+                  ▼ (EventBus — in-process, asyncio.gather)
           ┌───────┴───────┐
           ▼               ▼ (future workflows)
     bank_to_ynab     expense_auditor
@@ -794,7 +806,7 @@ Pub/Sub Push → webhook (thin adapter)
 @router.post("/gmail/webhook")
 async def gmail_push_webhook(request: Request):
     emails = await pubsub.handle_notification(pubsub_message)
-    bus = get_agent_bus()
+    bus = get_event_bus()
     for email in emails:
         await bus.publish("email.received", {
             "email_id": email.get("id", ""),
@@ -909,9 +921,58 @@ result = await pipeline.execute(initial_input={"raw_text": "hello"})
 A true tier-1 agentic system must have perfect visibility into non-deterministic LLM behavior.
 The platform features **native OpenTelemetry (OTel)** tracing embedded deep within the execution engines.
 
-- **`PipelineRunner` & Engines**: Emits spans capturing execution hierarchical steps, timing, and errors.
+- **`ADKRunner` & Engines**: Emits spans capturing execution hierarchical steps, timing, and errors.
 - **`BaseAgent`**: Emits spans (`agent.invoke`) tracking individual agent runs.
-- **`AgentBus`**: Automatically injects trace correlation IDs when publishing messages, capturing concurrent subscriber deliveries and failure states.
+- **`EventBus`**: Automatically injects trace correlation IDs when publishing messages, capturing concurrent subscriber deliveries and failure states.
+
+### Tracing — `setup_tracing()`
+
+The `setup_tracing()` function in [observability.py](file:///Users/camilopiedra/Development/Autopilot/autopilot/observability.py) initializes OpenTelemetry with **auto-detected service naming** and a **3-tier exporter hierarchy**:
+
+**Service Name Resolution:**
+
+| Priority | Source                             | When                         |
+| -------- | ---------------------------------- | ---------------------------- |
+| 1        | Explicit `service_name` arg        | Always, if provided          |
+| 2        | `K_SERVICE` env var                | On Cloud Run (auto-injected) |
+| 3        | `APP_NAME.lower()` (`"autopilot"`) | Local development fallback   |
+
+⛔️ **NEVER** hardcode workflow-specific names (e.g., `"bank-to-ynab"`) as the default service name. The observability module is **platform-level** — it must remain workflow-agnostic.
+
+**Exporter Hierarchy (3-tier):**
+
+| Priority | Condition                | Exporter                 | Use Case                             |
+| -------- | ------------------------ | ------------------------ | ------------------------------------ |
+| 1        | `otlp_endpoint` provided | `OTLPSpanExporter`       | Custom collector (Jaeger, Grafana)   |
+| 2        | `K_SERVICE` env set      | `CloudTraceSpanExporter` | GCP-native, zero-config on Cloud Run |
+| 3        | Default                  | `ConsoleSpanExporter`    | Local development                    |
+
+```python
+from autopilot.observability import setup_tracing
+
+# Local dev — auto: ConsoleSpanExporter, service="autopilot"
+tracer = setup_tracing()
+
+# Cloud Run — auto: CloudTraceSpanExporter, service=K_SERVICE value
+# (no code change needed — auto-detected from environment)
+
+# Custom OTLP collector — explicit endpoint
+tracer = setup_tracing(otlp_endpoint="http://collector:4317")
+```
+
+### Prometheus Metrics
+
+The platform provides **generic agent-level** counters and histograms at the platform level, plus **metric factories** for workflow-specific instrumentation:
+
+| Component                            | Purpose                                                        |
+| ------------------------------------ | -------------------------------------------------------------- |
+| `AGENT_CALLS`                        | Counter — total calls per agent stage (with status label)      |
+| `AGENT_LATENCY`                      | Histogram — per-agent latency distribution                     |
+| `create_pipeline_metrics(ns)`        | Factory — pipeline requests + latency for a workflow namespace |
+| `create_connector_metrics(ns, name)` | Factory — connector API requests + latency                     |
+| `trace_agent_stage(stage, pipeline)` | Context manager — wraps any code block with OTel span + timing |
+
+Workflow-specific metrics (pipeline, YNAB, cache) live in each workflow's own metrics module — **never** in the platform `observability.py`.
 
 ## 6. Error Taxonomy
 
@@ -952,7 +1013,7 @@ autopilot/                        # Core platform logic
 │   ├── session.py                # RedisSessionService, InMemorySessionService
 │   ├── memory.py                 # ChromaMemoryService, InMemoryMemoryService
 │   ├── context.py                # AgentContext (session, memory, tools, bus auto-provisioned)
-│   ├── bus.py                    # V3 Phase 5 — AgentBus, AgentMessage, Subscription
+│   ├── bus.py                    # V3 Phase 5 — EventBus (EventBusProtocol), AgentMessage, Subscription
 │   ├── dsl_schema.py             # V3 Phase 6 — DSLWorkflowDef, DSLStepDef, DSLNodeDef
 │   ├── dsl_loader.py             # V3 Phase 6 — load_workflow(), ref resolution, condition compiler
 │   └── tools/                    # Tool Ecosystem (Phase 4 + Phase 7)
@@ -968,6 +1029,14 @@ autopilot/                        # Core platform logic
 │   ├── tool_callbacks.py        # before/after tool callback logging
 │   └── guardrails.py            # Platform guard factories (input_length, injection, uuid, amount)
 ├── connectors/                   # External service integrations
+├── api/                          # HTTP layer (FastAPI routers, security, middleware)
+│   ├── security.py              # X-API-Key header validation (hmac.compare_digest)
+│   ├── middleware.py            # OpenTelemetry tracing middleware
+│   ├── errors.py                # Global exception handler for AutoPilotError
+│   ├── webhooks.py              # Webhook adapter (Gmail Pub/Sub → EventBus)
+│   ├── system.py                # Health, metrics, root info endpoints
+│   └── v1/                      # Versioned public API
+│       └── routes.py            # /api/v1/* — workflow CRUD + execute (protected by X-API-Key)
 ├── base_workflow.py              # BaseWorkflow (auto-loads manifest + pipeline)
 ├── errors.py                     # Structured error taxonomy
 ├── registry.py                   # WorkflowRegistry (3-level auto-discovery)
@@ -1078,7 +1147,7 @@ If `pipeline.yaml` exists, `BaseWorkflow.execute()` auto-loads and runs it. No P
 > **Owner**: Workflow developer
 > **Required**: ✅ Always (As an empty class `pass`), ⚡ Optional (for overriding methods)
 
-The workflow file acts as the **Platform Registry Anchor**. By inheriting from `BaseWorkflow`, the ADK platform's auto-discovery mechanism finds the workflow, loads its `manifest.yaml`, and registers it on the `AgentBus`. Without this file, the workflow does not exist to the engine.
+The workflow file acts as the **Platform Registry Anchor**. By inheriting from `BaseWorkflow`, the ADK platform's auto-discovery mechanism finds the workflow, loads its `manifest.yaml`, and registers it on the `EventBus`. Without this file, the workflow does not exist to the engine.
 
 However, its contents should remain **completely empty (`pass`)** unless you need to use the **Imperative Escape Hatch**.
 

@@ -10,7 +10,7 @@ from autopilot.models import WorkflowManifest, WorkflowResult
 from autopilot.registry import WorkflowRegistry, get_registry
 from autopilot.router import WorkflowRouter, get_router
 from autopilot.connectors import ConnectorRegistry, get_connector_registry
-from autopilot.agents import PipelineRunner, get_pipeline_runner
+from autopilot.core.adk_runner import ADKRunner, get_adk_runner
 from autopilot.models import PipelineResult
 from autopilot.core import (
     AgentContext,
@@ -23,8 +23,8 @@ from autopilot.core import (
     OrchestrationStrategy,
     ToolRegistry,
     get_tool_registry,
-    AgentBus,
-    get_agent_bus,
+    EventBus,
+    get_event_bus,
 )
 
 __all__ = [
@@ -51,11 +51,11 @@ __all__ = [
     # V3 Tool Ecosystem
     "ToolRegistry",
     "get_tool_registry",
-    # V3 Agent Bus (A2A)
-    "AgentBus",
-    "get_agent_bus",
-    # ADK Bridge (internal)
-    "PipelineRunner",
-    "get_pipeline_runner",
+    # Event Bus (Unified)
+    "EventBus",
+    "get_event_bus",
+    # ADK Runtime Bridge
+    "ADKRunner",
+    "get_adk_runner",
     "PipelineResult",
 ]

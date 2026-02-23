@@ -79,20 +79,27 @@ class TestAgentContext:
         assert ctx.get("from_child") is True
 
     @pytest.mark.asyncio
-    async def test_emit_event(self):
-        mock_bus = MagicMock()
-        mock_bus.emit = AsyncMock()
+    async def test_publish_event(self):
+        """ctx.publish() sends an event through the unified EventBus."""
+        from autopilot.core.bus import get_event_bus, reset_event_bus
 
-        with patch("autopilot.core.context.get_event_bus", return_value=mock_bus):
-            ctx = AgentContext(pipeline_name="test")
-            await ctx.emit("test_event", {"key": "value"})
+        reset_event_bus()
+        bus = get_event_bus()
+        received = []
 
-            mock_bus.emit.assert_called_once()
-            args = mock_bus.emit.call_args
-            payload = args[0][1]
-            assert payload["type"] == "test_event"
-            assert payload["key"] == "value"
-            assert payload["execution_id"] == ctx.execution_id
+        async def handler(msg):
+            received.append(msg)
+
+        bus.subscribe("test_event", handler)
+        ctx = AgentContext(pipeline_name="test")
+        await ctx.publish("test_event", {"key": "value"})
+
+        assert len(received) == 1
+        assert received[0].topic == "test_event"
+        assert received[0].payload["key"] == "value"
+        assert received[0].payload["execution_id"] == ctx.execution_id
+        assert received[0].sender == "test"
+        reset_event_bus()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -119,28 +126,18 @@ class TestBaseAgent:
     async def test_invoke_success(self):
         agent = DoubleAgent("doubler")
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        ctx = AgentContext(pipeline_name="test")
+        result = await agent.invoke(ctx, {"value": 5})
 
-            ctx = AgentContext(pipeline_name="test")
-            result = await agent.invoke(ctx, {"value": 5})
-
-            assert result == {"value": 10}
+        assert result == {"value": 10}
 
     @pytest.mark.asyncio
     async def test_invoke_failure_raises(self):
         agent = FailingAgent("failer")
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
-
-            ctx = AgentContext(pipeline_name="test")
-            with pytest.raises(RuntimeError, match="deliberate failure"):
-                await agent.invoke(ctx, {})
+        ctx = AgentContext(pipeline_name="test")
+        with pytest.raises(RuntimeError, match="deliberate failure"):
+            await agent.invoke(ctx, {})
 
     def test_repr(self):
         agent = DoubleAgent("doubler", description="Doubles values")
@@ -162,14 +159,9 @@ class TestFunctionalAgent:
         agent = FunctionalAgent(add_one)
         assert agent.name == "add_one"
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
-
-            ctx = AgentContext()
-            result = await agent.invoke(ctx, {"value": 10})
-            assert result == {"value": 11}
+        ctx = AgentContext()
+        result = await agent.invoke(ctx, {"value": 10})
+        assert result == {"value": 11}
 
     @pytest.mark.asyncio
     async def test_async_function(self):
@@ -178,14 +170,9 @@ class TestFunctionalAgent:
 
         agent = FunctionalAgent(async_double)
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
-
-            ctx = AgentContext()
-            result = await agent.invoke(ctx, {"value": 7})
-            assert result == {"value": 14}
+        ctx = AgentContext()
+        result = await agent.invoke(ctx, {"value": 7})
+        assert result == {"value": 14}
 
     @pytest.mark.asyncio
     async def test_pydantic_return(self):
@@ -200,14 +187,9 @@ class TestFunctionalAgent:
 
         agent = FunctionalAgent(make_result)
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
-
-            ctx = AgentContext()
-            result = await agent.invoke(ctx, {})
-            assert result == {"answer": "hello"}
+        ctx = AgentContext()
+        result = await agent.invoke(ctx, {})
+        assert result == {"answer": "hello"}
 
     @pytest.mark.asyncio
     async def test_optional_pydantic_hydration(self):
@@ -226,18 +208,13 @@ class TestFunctionalAgent:
         agent = FunctionalAgent(greet_user)
         ctx = AgentContext()
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        # Test 1: Hydrated correctly when input is provided
+        result1 = await agent.invoke(ctx, {"user": {"name": "Alice"}})
+        assert result1 == {"message": "Hello Alice"}
 
-            # Test 1: Hydrated correctly when input is provided
-            result1 = await agent.invoke(ctx, {"user": {"name": "Alice"}})
-            assert result1 == {"message": "Hello Alice"}
-
-            # Test 2: Defaults to None when input is absent
-            result2 = await agent.invoke(ctx, {})
-            assert result2 == {"message": "Hello Guest"}
+        # Test 2: Defaults to None when input is absent
+        result2 = await agent.invoke(ctx, {})
+        assert result2 == {"message": "Hello Guest"}
 
     @pytest.mark.asyncio
     async def test_pep604_union_hydration(self):
@@ -255,18 +232,13 @@ class TestFunctionalAgent:
         agent = FunctionalAgent(greet_user)
         ctx = AgentContext()
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        # Test 1: Hydrated correctly when input is provided
+        result1 = await agent.invoke(ctx, {"user": {"name": "Bob"}})
+        assert result1 == {"message": "Hello Bob"}
 
-            # Test 1: Hydrated correctly when input is provided
-            result1 = await agent.invoke(ctx, {"user": {"name": "Bob"}})
-            assert result1 == {"message": "Hello Bob"}
-
-            # Test 2: Defaults to None when input is absent
-            result2 = await agent.invoke(ctx, {})
-            assert result2 == {"message": "Hello Guest"}
+        # Test 2: Defaults to None when input is absent
+        result2 = await agent.invoke(ctx, {})
+        assert result2 == {"message": "Hello Guest"}
 
     @pytest.mark.asyncio
     async def test_strict_pydantic_hydration_raises_validation_error(self):
@@ -282,17 +254,12 @@ class TestFunctionalAgent:
         agent = FunctionalAgent(strictly_typed_step)
         ctx = AgentContext()
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        # Passing an empty dict should fail fast violently at hydration
+        with pytest.raises(ValidationError) as exc_info:
+            await agent.invoke(ctx, {"data": {}})
 
-            # Passing an empty dict should fail fast violently at hydration
-            with pytest.raises(ValidationError) as exc_info:
-                await agent.invoke(ctx, {"data": {}})
-
-            assert "required_field" in str(exc_info.value)
-            assert "Field required" in str(exc_info.value)
+        assert "required_field" in str(exc_info.value)
+        assert "Field required" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_reads_from_ctx_state(self):
@@ -303,14 +270,9 @@ class TestFunctionalAgent:
 
         agent = FunctionalAgent(greet)
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
-
-            ctx = AgentContext(state={"name": "World"})
-            result = await agent.invoke(ctx, {})
-            assert result == {"greeting": "Hello, World!"}
+        ctx = AgentContext(state={"name": "World"})
+        result = await agent.invoke(ctx, {})
+        assert result == {"greeting": "Hello, World!"}
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -360,18 +322,13 @@ class TestPipeline:
             ],
         )
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        result = await pipeline.execute(initial_input={"email_body": "hello"})
 
-            result = await pipeline.execute(initial_input={"email_body": "hello"})
-
-            assert result.success is True
-            assert result.state["parsed"] == "HELLO"
-            assert result.state["final"] == "Processed: HELLO"
-            assert result.steps_completed == ["step_a", "step_b"]
-            assert result.duration_ms > 0
+        assert result.success is True
+        assert result.state["parsed"] == "HELLO"
+        assert result.state["final"] == "Processed: HELLO"
+        assert result.steps_completed == ["step_a", "step_b"]
+        assert result.duration_ms > 0
 
     @pytest.mark.asyncio
     async def test_error_propagation(self):
@@ -385,13 +342,8 @@ class TestPipeline:
 
         pipeline = Pipeline("test", [agent_good, agent_bad])
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
-
-            with pytest.raises(RuntimeError, match="deliberate failure"):
-                await pipeline.execute()
+        with pytest.raises(RuntimeError, match="deliberate failure"):
+            await pipeline.execute()
 
     @pytest.mark.asyncio
     async def test_uses_provided_context(self):
@@ -402,19 +354,14 @@ class TestPipeline:
 
         pipeline = Pipeline("test", [FunctionalAgent(echo_name)])
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        ctx = AgentContext(
+            execution_id="custom-id",
+            pipeline_name="custom_pipeline",
+        )
+        result = await pipeline.execute(ctx, initial_input={"x": 1})
 
-            ctx = AgentContext(
-                execution_id="custom-id",
-                pipeline_name="custom_pipeline",
-            )
-            result = await pipeline.execute(ctx, initial_input={"x": 1})
-
-            assert result.execution_id == "custom-id"
-            assert ctx.get("done") is True
+        assert result.execution_id == "custom-id"
+        assert ctx.get("done") is True
 
     def test_repr(self):
         pipeline = Pipeline(
@@ -537,28 +484,23 @@ class TestPipelineE2E:
             .build()
         )
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        result = await pipeline.execute(
+            initial_input={"email_body": "<html>Your Amazon purchase...</html>"}
+        )
 
-            result = await pipeline.execute(
-                initial_input={"email_body": "<html>Your Amazon purchase...</html>"}
-            )
+        assert result.success is True
+        assert result.steps_completed == [
+            "parse_email",
+            "match_account",
+            "categorizer",
+            "merge",
+        ]
 
-            assert result.success is True
-            assert result.steps_completed == [
-                "parse_email",
-                "match_account",
-                "categorizer",
-                "merge",
-            ]
-
-            tx = result.state["transaction"]
-            assert tx["payee"] == "Amazon"
-            assert tx["amount"] == -42.99
-            assert tx["account"] == "Checking"
-            assert tx["category"] == "Shopping"
+        tx = result.state["transaction"]
+        assert tx["payee"] == "Amazon"
+        assert tx["amount"] == -42.99
+        assert tx["account"] == "Checking"
+        assert tx["category"] == "Shopping"
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -589,16 +531,11 @@ class TestSequentialAgentAdapter:
 
         seq = SequentialAgentAdapter("seq", children=[AddX("add_x"), AddY("add_y")])
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        ctx = AgentContext(pipeline_name="test")
+        result = await seq.invoke(ctx, {"x": 5})
 
-            ctx = AgentContext(pipeline_name="test")
-            result = await seq.invoke(ctx, {"x": 5})
-
-            assert result["x"] == 6  # AddX: 5 + 1
-            assert result["y"] == 60  # AddY: 6 * 10
+        assert result["x"] == 6  # AddX: 5 + 1
+        assert result["y"] == 60  # AddY: 6 * 10
 
     @pytest.mark.asyncio
     async def test_error_propagation(self):
@@ -608,14 +545,9 @@ class TestSequentialAgentAdapter:
 
         seq = SequentialAgentAdapter("seq", children=[agent_ok, agent_bad])
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
-
-            ctx = AgentContext(pipeline_name="test")
-            with pytest.raises(RuntimeError, match="deliberate failure"):
-                await seq.invoke(ctx, {"value": 1})
+        ctx = AgentContext(pipeline_name="test")
+        with pytest.raises(RuntimeError, match="deliberate failure"):
+            await seq.invoke(ctx, {"value": 1})
 
     def test_empty_children_raises(self):
         with pytest.raises(ValueError, match="at least one child"):
@@ -646,16 +578,11 @@ class TestLoopAgentAdapter:
             max_iterations=10,
         )
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        ctx = AgentContext(pipeline_name="test")
+        result = await loop.invoke(ctx, {"counter": 0})
 
-            ctx = AgentContext(pipeline_name="test")
-            result = await loop.invoke(ctx, {"counter": 0})
-
-            assert result["counter"] == 3
-            assert call_count == 3
+        assert result["counter"] == 3
+        assert call_count == 3
 
     @pytest.mark.asyncio
     async def test_max_iterations_raises(self):
@@ -672,16 +599,11 @@ class TestLoopAgentAdapter:
             max_iterations=2,
         )
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        ctx = AgentContext(pipeline_name="test")
+        with pytest.raises(MaxRetriesExceededError) as exc_info:
+            await loop.invoke(ctx, {})
 
-            ctx = AgentContext(pipeline_name="test")
-            with pytest.raises(MaxRetriesExceededError) as exc_info:
-                await loop.invoke(ctx, {})
-
-            assert exc_info.value.iterations == 2
+        assert exc_info.value.iterations == 2
 
     @pytest.mark.asyncio
     async def test_single_iteration_pass(self):
@@ -698,15 +620,10 @@ class TestLoopAgentAdapter:
             max_iterations=5,
         )
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        ctx = AgentContext(pipeline_name="test")
+        result = await loop.invoke(ctx, {})
 
-            ctx = AgentContext(pipeline_name="test")
-            result = await loop.invoke(ctx, {})
-
-            assert result["valid"] is True
+        assert result["valid"] is True
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -739,23 +656,18 @@ class TestParallelAgentAdapter:
             ],
         )
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        ctx = AgentContext(pipeline_name="test")
 
-            ctx = AgentContext(pipeline_name="test")
+        import time
 
-            import time
+        start = time.monotonic()
+        result = await par.invoke(ctx, {})
+        elapsed = time.monotonic() - start
 
-            start = time.monotonic()
-            result = await par.invoke(ctx, {})
-            elapsed = time.monotonic() - start
-
-            assert result["api1"] == "data_a"
-            assert result["api2"] == "data_b"
-            # Should run concurrently: ~0.02s, not ~0.04s
-            assert elapsed < 0.1
+        assert result["api1"] == "data_a"
+        assert result["api2"] == "data_b"
+        # Should run concurrently: ~0.02s, not ~0.04s
+        assert elapsed < 0.1
 
     @pytest.mark.asyncio
     async def test_error_in_branch(self):
@@ -765,14 +677,9 @@ class TestParallelAgentAdapter:
 
         par = ParallelAgentAdapter("par", branches=[agent_ok, agent_bad])
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
-
-            ctx = AgentContext(pipeline_name="test")
-            with pytest.raises(RuntimeError, match="deliberate failure"):
-                await par.invoke(ctx, {"value": 1})
+        ctx = AgentContext(pipeline_name="test")
+        with pytest.raises(RuntimeError, match="deliberate failure"):
+            await par.invoke(ctx, {"value": 1})
 
     def test_empty_branches_raises(self):
         with pytest.raises(ValueError, match="at least one branch"):
@@ -882,17 +789,12 @@ class TestLoopPipelineE2E:
             .build()
         )
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        result = await pipeline.execute(initial_input={"raw_email": "..."})
 
-            result = await pipeline.execute(initial_input={"raw_email": "..."})
-
-            assert result.success is True
-            assert result.state["valid"] is True
-            assert "Amazon" in result.state["formatted"]
-            assert attempt["n"] == 3
+        assert result.success is True
+        assert result.state["valid"] is True
+        assert "Amazon" in result.state["formatted"]
+        assert attempt["n"] == 3
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -986,18 +888,13 @@ class TestDAGRunner:
 
         dag = DAGBuilder("single").node("produce", produce).build()
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        result = await dag.execute(initial_input={"seed": True})
 
-            result = await dag.execute(initial_input={"seed": True})
-
-            assert result.success is True
-            assert result.state["result"] == 42
-            assert result.state["seed"] is True
-            assert result.steps_completed == ["produce"]
-            assert result.duration_ms > 0
+        assert result.success is True
+        assert result.state["result"] == 42
+        assert result.state["seed"] is True
+        assert result.steps_completed == ["produce"]
+        assert result.duration_ms > 0
 
     @pytest.mark.asyncio
     async def test_linear_chain(self):
@@ -1020,16 +917,11 @@ class TestDAGRunner:
             .build()
         )
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        result = await dag.execute()
 
-            result = await dag.execute()
-
-            assert result.success is True
-            assert result.state == {"a": 1, "b": 2, "c": 3}
-            assert result.steps_completed == ["a", "b", "c"]
+        assert result.success is True
+        assert result.state == {"a": 1, "b": 2, "c": 3}
+        assert result.steps_completed == ["a", "b", "c"]
 
     @pytest.mark.asyncio
     async def test_parallel_independent_nodes(self):
@@ -1053,22 +945,17 @@ class TestDAGRunner:
             .build()
         )
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        import time as time_mod
 
-            import time as time_mod
+        start = time_mod.monotonic()
+        result = await dag.execute()
+        elapsed = time_mod.monotonic() - start
 
-            start = time_mod.monotonic()
-            result = await dag.execute()
-            elapsed = time_mod.monotonic() - start
-
-            assert result.success is True
-            assert result.state["api1"] == "data_a"
-            assert result.state["api2"] == "data_b"
-            # Should run concurrently: ~0.02s, not ~0.04s
-            assert elapsed < 0.1
+        assert result.success is True
+        assert result.state["api1"] == "data_a"
+        assert result.state["api2"] == "data_b"
+        # Should run concurrently: ~0.02s, not ~0.04s
+        assert elapsed < 0.1
 
     @pytest.mark.asyncio
     async def test_diamond_pattern(self):
@@ -1102,23 +989,18 @@ class TestDAGRunner:
             .build()
         )
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        result = await dag.execute()
 
-            result = await dag.execute()
-
-            assert result.success is True
-            assert result.state["a"] == "a_done"
-            assert result.state["b"] == "b_done"
-            assert result.state["c"] == "c_done"
-            assert result.state["merged"] == "b_done+c_done"
-            # Steps completed: a first, then b+c in parallel, then d
-            assert "a" in result.steps_completed
-            assert "b" in result.steps_completed
-            assert "c" in result.steps_completed
-            assert "d" in result.steps_completed
+        assert result.success is True
+        assert result.state["a"] == "a_done"
+        assert result.state["b"] == "b_done"
+        assert result.state["c"] == "c_done"
+        assert result.state["merged"] == "b_done+c_done"
+        # Steps completed: a first, then b+c in parallel, then d
+        assert "a" in result.steps_completed
+        assert "b" in result.steps_completed
+        assert "c" in result.steps_completed
+        assert "d" in result.steps_completed
 
     @pytest.mark.asyncio
     async def test_state_accumulation_from_dependencies(self):
@@ -1139,15 +1021,10 @@ class TestDAGRunner:
             .build()
         )
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        result = await dag.execute()
 
-            result = await dag.execute()
-
-            assert result.state["root_val"] == 100
-            assert result.state["downstream_val"] == 200
+        assert result.state["root_val"] == 100
+        assert result.state["downstream_val"] == 200
 
     @pytest.mark.asyncio
     async def test_error_propagation(self):
@@ -1163,13 +1040,8 @@ class TestDAGRunner:
             .build()
         )
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
-
-            with pytest.raises(RuntimeError, match="deliberate failure"):
-                await dag.execute()
+        with pytest.raises(RuntimeError, match="deliberate failure"):
+            await dag.execute()
 
     @pytest.mark.asyncio
     async def test_uses_provided_context(self):
@@ -1180,19 +1052,14 @@ class TestDAGRunner:
 
         dag = DAGBuilder("ctx_test").node("noop", noop).build()
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        ctx = AgentContext(
+            execution_id="custom-dag-id",
+            pipeline_name="custom_dag",
+        )
+        result = await dag.execute(ctx, initial_input={"x": 1})
 
-            ctx = AgentContext(
-                execution_id="custom-dag-id",
-                pipeline_name="custom_dag",
-            )
-            result = await dag.execute(ctx, initial_input={"x": 1})
-
-            assert result.execution_id == "custom-dag-id"
-            assert ctx.get("done") is True
+        assert result.execution_id == "custom-dag-id"
+        assert ctx.get("done") is True
 
     def test_repr(self):
         dag = (
@@ -1434,19 +1301,14 @@ class TestAgentContextPhase3:
         session = InMemorySessionService()
         memory = InMemoryMemoryService()
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        ctx = AgentContext(
+            pipeline_name="test",
+            session=session,
+            memory=memory,
+        )
 
-            ctx = AgentContext(
-                pipeline_name="test",
-                session=session,
-                memory=memory,
-            )
-
-            assert ctx.session is session
-            assert ctx.memory is memory
+        assert ctx.session is session
+        assert ctx.memory is memory
 
     @pytest.mark.asyncio
     async def test_for_step_propagates_session_memory(self):
@@ -1479,45 +1341,30 @@ class TestAgentContextPhase3:
         """Convenience methods remember() and recall() should delegate to memory."""
         memory = InMemoryMemoryService()
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        ctx = AgentContext(pipeline_name="test", memory=memory)
 
-            ctx = AgentContext(pipeline_name="test", memory=memory)
+        obs = await ctx.remember("User prefers dark mode", {"source": "prefs"})
+        assert obs is not None
+        assert obs.text == "User prefers dark mode"
 
-            obs = await ctx.remember("User prefers dark mode", {"source": "prefs"})
-            assert obs is not None
-            assert obs.text == "User prefers dark mode"
-
-            results = await ctx.recall("dark theme")
-            assert len(results) >= 1
-            assert results[0].relevance_score > 0
+        results = await ctx.recall("dark theme")
+        assert len(results) >= 1
+        assert results[0].relevance_score > 0
 
     @pytest.mark.asyncio
     async def test_remember_with_auto_provisioned_memory(self):
         """remember() with auto-provisioned memory should work."""
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
-
-            ctx = AgentContext(pipeline_name="test")
-            obs = await ctx.remember("Something important")
-            assert obs is not None
-            assert obs.text == "Something important"
+        ctx = AgentContext(pipeline_name="test")
+        obs = await ctx.remember("Something important")
+        assert obs is not None
+        assert obs.text == "Something important"
 
     @pytest.mark.asyncio
     async def test_recall_with_auto_provisioned_memory(self):
         """recall() with auto-provisioned (empty) memory returns empty list."""
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
-
-            ctx = AgentContext(pipeline_name="test")
-            results = await ctx.recall("anything")
-            assert results == []
+        ctx = AgentContext(pipeline_name="test")
+        results = await ctx.recall("anything")
+        assert results == []
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1549,17 +1396,12 @@ class TestCrossExecutionMemory:
 
         writer_pipeline = Pipeline("run_1", [WriterAgent("writer")])
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
-
-            ctx1 = AgentContext(pipeline_name="run_1", memory=shared_memory)
-            result1 = await writer_pipeline.execute(
-                ctx1,
-                initial_input={"payee": "Amazon", "amount": 42.99},
-            )
-            assert result1.success is True
+        ctx1 = AgentContext(pipeline_name="run_1", memory=shared_memory)
+        result1 = await writer_pipeline.execute(
+            ctx1,
+            initial_input={"payee": "Amazon", "amount": 42.99},
+        )
+        assert result1.success is True
 
         # ── Run 2: Different agent recalls the observation ────────────
         class ReaderAgent(BaseAgent[dict, dict]):
@@ -1572,15 +1414,10 @@ class TestCrossExecutionMemory:
 
         reader_pipeline = Pipeline("run_2", [ReaderAgent("reader")])
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
+        ctx2 = AgentContext(pipeline_name="run_2", memory=shared_memory)
+        result2 = await reader_pipeline.execute(ctx2)
 
-            ctx2 = AgentContext(pipeline_name="run_2", memory=shared_memory)
-            result2 = await reader_pipeline.execute(ctx2)
-
-            assert result2.success is True
-            assert result2.state["found_memories"] >= 1
-            assert "Amazon" in result2.state["top_memory"]
-            assert "$42.99" in result2.state["top_memory"]
+        assert result2.success is True
+        assert result2.state["found_memories"] >= 1
+        assert "Amazon" in result2.state["top_memory"]
+        assert "$42.99" in result2.state["top_memory"]

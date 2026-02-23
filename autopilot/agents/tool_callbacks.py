@@ -20,7 +20,7 @@ from typing import Any, Optional
 from google.adk.tools import BaseTool
 from google.adk.tools.tool_context import ToolContext
 
-from autopilot.agents.callbacks import _emit_event_async
+from autopilot.agents.callbacks import _publish_event_async
 from autopilot.observability import AGENT_CALLS, AGENT_LATENCY
 
 logger = structlog.get_logger(__name__)
@@ -68,14 +68,14 @@ async def before_tool_logger(
         args=safe_args,
     )
 
-    # Emit SSE event for real-time tool observability
-    _emit_event_async(
+    # Publish event for real-time tool observability
+    _publish_event_async(
+        "tool.started",
         {
-            "type": "tool_started",
             "agent": agent_name,
             "tool": tool_name,
             "args": safe_args,
-        }
+        },
     )
 
     return None  # Allow tool execution to proceed
@@ -126,16 +126,16 @@ async def after_tool_logger(
     AGENT_CALLS.labels(agent_name=f"tool:{tool_name}", status=status).inc()
     AGENT_LATENCY.labels(agent_name=f"tool:{tool_name}").observe(latency_s)
 
-    # ── SSE event ────────────────────────────────────────────────────
-    _emit_event_async(
+    # ── Publish event ──────────────────────────────────────────────────
+    _publish_event_async(
+        "tool.completed",
         {
-            "type": "tool_completed",
             "agent": agent_name,
             "tool": tool_name,
             "latency_ms": latency_ms,
             "is_error": is_error,
             "response_summary": response_summary,
-        }
+        },
     )
 
     return None  # Don't modify the tool response

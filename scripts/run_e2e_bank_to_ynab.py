@@ -117,23 +117,23 @@ async def run_e2e(email_text: str, auto_create: bool = True, via_bus: bool = Fal
 
     if via_bus:
         # Event-driven: simulate what the Gmail webhook does
-        from autopilot.core.bus import get_agent_bus
+        from autopilot.core.bus import get_event_bus
 
-        bus = get_agent_bus()
+        bus = get_event_bus()
 
         event_payload = {
             "email_id": "e2e-test-001",
             "sender": "alertasynotificaciones@bancolombia.com.co",
             "subject": "Compra realizada",
             "body": email_text,
-            "label_ids": ["INBOX", "Bancolombia"],
+            "label_ids": ["INBOX", "Bancos/Bancolombia"],
             "source": "e2e_test",
             "email": {
                 "id": "e2e-test-001",
                 "from": "alertasynotificaciones@bancolombia.com.co",
                 "subject": "Compra realizada",
                 "body": email_text,
-                "labelIds": ["INBOX", "Bancolombia"],
+                "labelIds": ["INBOX", "Bancos/Bancolombia"],
             },
         }
 

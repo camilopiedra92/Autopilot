@@ -2,7 +2,6 @@
 Platform Agents — ADK agent orchestration as a platform capability.
 
 Provides:
-  - PipelineRunner: High-level pipeline execution engine
   - Observability callbacks: before/after model logging + Prometheus + SSE
   - Tool callbacks: before/after tool logging + Prometheus + SSE
   - Reusable guardrails: Input/output validation factories
@@ -10,7 +9,6 @@ Provides:
   - JSON utilities: Robust extraction from LLM output
 """
 
-from autopilot.agents.pipeline_runner import PipelineRunner, get_pipeline_runner
 from autopilot.agents.callbacks import (
     before_model_logger,
     after_model_logger,
@@ -31,9 +29,6 @@ from autopilot.agents.json_utils import extract_json
 from autopilot.agents.agent_cards import load_agent_card, discover_agent_cards
 
 __all__ = [
-    # Pipeline execution
-    "PipelineRunner",
-    "get_pipeline_runner",
     # Model-level observability callbacks
     "before_model_logger",
     "after_model_logger",

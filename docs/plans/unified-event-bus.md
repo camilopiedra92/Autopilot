@@ -894,7 +894,7 @@ class RedisStreamEventBus(EventBusProtocol):
 
 #### Step 4.2: Add Redis Dependencies
 
-**File**: `requirements.txt` (add)
+**File**: `pyproject.toml` (add to `[project.dependencies]`)
 
 ```
 redis[hiredis]>=5.0
@@ -1080,7 +1080,7 @@ Add Redis/Memorystore setup to the deployment checklist.
 | 3.1  | Create `EventStore` ABC + InMemory impl                   | `core/event_store.py`               | ❌                   | 3     |
 | 3.2  | Wire event store as middleware                            | `core/bus.py`                       | ❌                   | 3     |
 | 4.1  | Implement `RedisStreamEventBus`                           | `core/bus_redis.py`                 | ❌                   | 4     |
-| 4.2  | Add `redis[hiredis]` dependency                           | `requirements.txt`                  | ❌                   | 4     |
+| 4.2  | Add `redis[hiredis]` dependency                           | `pyproject.toml`                    | ❌                   | 4     |
 | 4.3  | Add `fakeredis` test dependency                           | `requirements-dev.txt`              | ❌                   | 4     |
 | 4.4  | Startup/shutdown lifecycle integration                    | `app.py`                            | ❌                   | 4     |
 | 4.5  | DLQ monitoring endpoint                                   | `api/system.py`                     | ❌                   | 4     |
@@ -1110,7 +1110,7 @@ Add Redis/Memorystore setup to the deployment checklist.
 | **CREATE** | `autopilot/core/event_store.py` — EventStore ABC + InMemory        | 3     |
 | **CREATE** | `autopilot/core/bus_redis.py` — RedisStreamEventBus                | 4     |
 | **CREATE** | `tests/autopilot/test_bus_redis.py` — Redis bus tests              | 4     |
-| **MODIFY** | `requirements.txt` — Add redis[hiredis]                            | 4     |
+| **MODIFY** | `pyproject.toml` — Add redis[hiredis] to `[project.dependencies]`  | 4     |
 | **MODIFY** | `app.py` — Lifespan hooks for bus start/stop                       | 4     |
 | **MODIFY** | `autopilot/api/system.py` — DLQ endpoint                           | 4     |
 | **MODIFY** | `docs/ARCHITECTURE.md` — Full rewrite of event bus section         | 5     |

@@ -116,8 +116,8 @@ class DAGRunner:
             layers=[[n for n in layer] for layer in self._layers],
             total_nodes=len(self._nodes),
         )
-        await ctx.emit(
-            "dag_started",
+        await ctx.publish(
+            "dag.started",
             {
                 "dag": self.name,
                 "total_nodes": len(self._nodes),
@@ -157,8 +157,8 @@ class DAGRunner:
                 dag=self.name,
                 error=str(exc),
             )
-            await ctx.emit(
-                "dag_failed",
+            await ctx.publish(
+                "dag.failed",
                 {
                     "dag": self.name,
                     "error": str(exc),
@@ -178,8 +178,8 @@ class DAGRunner:
                     duration_ms=elapsed,
                     steps_completed=result.steps_completed,
                 )
-                await ctx.emit(
-                    "dag_completed",
+                await ctx.publish(
+                    "dag.completed",
                     {
                         "dag": self.name,
                         "duration_ms": elapsed,
@@ -199,7 +199,7 @@ class DAGRunner:
         node = self._nodes[node_name]
 
         ctx.logger.info("dag_node_started", node=node_name)
-        await ctx.emit("dag_node_started", {"dag": self.name, "node": node_name})
+        await ctx.publish("dag.node_started", {"dag": self.name, "node": node_name})
 
         node_start = time.monotonic()
 
@@ -218,8 +218,8 @@ class DAGRunner:
             duration_ms=elapsed,
             output_keys=list(output.keys()) if output else [],
         )
-        await ctx.emit(
-            "dag_node_completed",
+        await ctx.publish(
+            "dag.node_completed",
             {
                 "dag": self.name,
                 "node": node_name,

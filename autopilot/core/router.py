@@ -69,7 +69,7 @@ class RouterRunner:
         ctx.logger.info(
             "router_started", runner=self.name, routes=list(self.routes.keys())
         )
-        await ctx.emit("router_started", {"runner": self.name})
+        await ctx.publish("router.started", {"runner": self.name})
 
         try:
             # Step 1: Execute the router agent to determine intent
@@ -86,8 +86,8 @@ class RouterRunner:
                 )
 
             ctx.logger.info("route_selected", runner=self.name, route=selected_route)
-            await ctx.emit(
-                "route_selected", {"runner": self.name, "route": selected_route}
+            await ctx.publish(
+                "router.route_selected", {"runner": self.name, "route": selected_route}
             )
 
             # Step 2: Retrieve and execute the target engine
@@ -106,7 +106,7 @@ class RouterRunner:
             result.success = False
             result.error = str(exc)
             ctx.logger.error("router_failed", runner=self.name, error=str(exc))
-            await ctx.emit("router_failed", {"runner": self.name, "error": str(exc)})
+            await ctx.publish("router.failed", {"runner": self.name, "error": str(exc)})
             raise
         finally:
             elapsed = round((time.monotonic() - start) * 1000, 2)
@@ -117,8 +117,8 @@ class RouterRunner:
                 ctx.logger.info(
                     "router_completed", runner=self.name, duration_ms=elapsed
                 )
-                await ctx.emit(
-                    "router_completed", {"runner": self.name, "duration_ms": elapsed}
+                await ctx.publish(
+                    "router.completed", {"runner": self.name, "duration_ms": elapsed}
                 )
 
         return result

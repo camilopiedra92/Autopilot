@@ -11,7 +11,7 @@ This package provides the foundational building blocks for the platform:
   - OrchestrationStrategy: Multi-strategy enum (SEQUENTIAL, DAG, REACT, ROUTER)
   - Session & Memory: Short-term state + long-term semantic memory (V3 Phase 3)
   - Tool Ecosystem: ToolRegistry, @tool decorator, MCP Bridge (V3 Phase 4)
-  - Agent Bus: Typed pub/sub messaging for A2A communication (V3 Phase 5)
+  - Event Bus: Unified typed pub/sub messaging for all platform events
 """
 
 from autopilot.core.context import AgentContext
@@ -40,11 +40,12 @@ from autopilot.core.tools import (
     MCPRegistry,
 )
 from autopilot.core.bus import (
-    AgentBus,
+    EventBus,
+    EventBusProtocol,
     AgentMessage,
     Subscription,
-    get_agent_bus,
-    reset_agent_bus,
+    get_event_bus,
+    reset_event_bus,
 )
 from autopilot.core.subscribers import (
     SubscriberRegistry,
@@ -84,12 +85,13 @@ __all__ = [
     "tool",
     "MCPBridge",
     "MCPRegistry",
-    # V3 Phase 5 — Agent Bus (A2A)
-    "AgentBus",
+    # Event Bus (Unified)
+    "EventBus",
+    "EventBusProtocol",
     "AgentMessage",
     "Subscription",
-    "get_agent_bus",
-    "reset_agent_bus",
+    "get_event_bus",
+    "reset_event_bus",
     # V3 Phase 5b — Subscriber Registry
     "SubscriberRegistry",
     "get_subscriber_registry",

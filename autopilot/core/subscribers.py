@@ -44,7 +44,7 @@ from typing import Any
 from autopilot.core.bus import (
     MessageHandler,
     Subscription,
-    get_agent_bus,
+    get_event_bus,
 )
 
 logger = structlog.get_logger(__name__)
@@ -80,7 +80,7 @@ class SubscriberRegistry:
         Returns:
             A ``Subscription`` handle for manual unsubscribe if needed.
         """
-        bus = get_agent_bus()
+        bus = get_event_bus()
         sub = bus.subscribe(topic, handler)
         self._entries.append(_RegistryEntry(name=name, topic=topic, subscription=sub))
         logger.info(
@@ -93,7 +93,7 @@ class SubscriberRegistry:
 
     def unregister_all(self) -> None:
         """Remove all registered subscribers from the bus."""
-        bus = get_agent_bus()
+        bus = get_event_bus()
         for entry in self._entries:
             bus.unsubscribe(entry.subscription)
             logger.debug(

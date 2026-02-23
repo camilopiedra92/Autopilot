@@ -536,26 +536,16 @@ class TestAgentContextTools:
     def test_context_has_tools_property(self):
         from autopilot.core.context import AgentContext
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
-
-            ctx = AgentContext(pipeline_name="test")
-            assert ctx.tools is not None
-            assert isinstance(ctx.tools, ToolRegistry)
+        ctx = AgentContext(pipeline_name="test")
+        assert ctx.tools is not None
+        assert isinstance(ctx.tools, ToolRegistry)
 
     def test_context_tools_returns_singleton(self):
         from autopilot.core.context import AgentContext
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
-
-            ctx = AgentContext()
-            global_reg = get_tool_registry()
-            assert ctx.tools is global_reg
+        ctx = AgentContext()
+        global_reg = get_tool_registry()
+        assert ctx.tools is global_reg
 
     def test_context_tools_access_registered_tool(self):
         from autopilot.core.context import AgentContext
@@ -567,11 +557,6 @@ class TestAgentContextTools:
         registry = get_tool_registry()
         registry.register(helper)
 
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
-
-            ctx = AgentContext()
-            fn = ctx.tools.get("helper")
-            assert fn(10) == 11
+        ctx = AgentContext()
+        fn = ctx.tools.get("helper")
+        assert fn(10) == 11

@@ -9,7 +9,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, Body
 import structlog
 
-from autopilot.auth.api_security import get_api_key
+from autopilot.api.security import get_api_key
 from autopilot.registry import get_registry
 from autopilot.router import get_router
 

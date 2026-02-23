@@ -107,9 +107,9 @@ class TestWorkflowRouterLogic:
 
     async def test_email_received_event_via_bus(self):
         """email.received published on bus is delivered to subscribers."""
-        from autopilot.core.bus import AgentBus
+        from autopilot.core.bus import EventBus
 
-        bus = AgentBus()
+        bus = EventBus()
         received = []
 
         async def handler(msg):

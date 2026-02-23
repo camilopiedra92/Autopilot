@@ -161,9 +161,9 @@ class WorkflowInfo(BaseModel):
 
 class PipelineResult(BaseModel):
     """
-    Structured result from a PipelineRunner execution.
+    Structured result from an ADKRunner execution.
 
-    Returned by PipelineRunner.run() after a multi-agent pipeline completes.
+    Returned by ADKRunner.run() after a multi-agent pipeline completes.
     Contains the raw final text, extracted JSON, final session state,
     and timing information.
     """

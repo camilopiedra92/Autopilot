@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from autopilot.router import get_router
 from autopilot.connectors import get_connector_registry
-from autopilot.core.bus import get_agent_bus
+from autopilot.core.bus import get_event_bus
 
 logger = structlog.get_logger(__name__)
 
@@ -110,7 +110,7 @@ async def gmail_push_webhook(request: Request):
         return {"status": "ignored", "reason": "no_new_emails"}
 
     # 2. Publish each email as an event (bus awaits all subscribers)
-    bus = get_agent_bus()
+    bus = get_event_bus()
     for email in emails:
         event_payload = {
             "email_id": email.get("id", ""),

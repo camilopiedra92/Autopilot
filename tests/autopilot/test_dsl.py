@@ -39,14 +39,14 @@ from autopilot.core.dsl_loader import (
 from autopilot.errors import DSLValidationError, DSLResolutionError
 
 
-# ── Test helper: patch event bus ────────────────────────────────────────
+# ── Test helper: event bus (no-op — in-memory bus works natively) ───
+from contextlib import contextmanager
 
 
+@contextmanager
 def _mock_event_bus():
-    """Context manager that patches the event bus for all tests."""
-    mock_bus = MagicMock()
-    mock_bus.emit = AsyncMock()
-    return patch("autopilot.core.context.get_event_bus", return_value=mock_bus)
+    """No-op context manager — the unified in-memory EventBus works in tests."""
+    yield
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

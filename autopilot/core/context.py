@@ -1,12 +1,12 @@
 """
 AgentContext — Rich execution context for every agent invocation.
 
-Every agent in the platform receives an `AgentContext` that provides:
+Every agent in the platform receives an ``AgentContext`` that provides:
   - execution_id: Unique ID for this pipeline run (correlation)
   - logger: Structured logger pre-bound with execution metadata
-  - emit(): Publish events to the EventBus for real-time streaming
+  - publish(): Publish events to the unified EventBus
   - state: Accumulated pipeline state (typed dict)
-  - bus: Typed pub/sub Agent Bus for inter-agent communication (A2A)
+  - bus: The unified EventBus for all event communication
   - metadata: Immutable run-level metadata (trigger, workflow, etc.)
   - session: Short-term key-value state scoped to this execution
   - memory: Long-term semantic memory shared across executions
@@ -25,7 +25,6 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import uuid4
 
-from autopilot.services.event_bus import get_event_bus
 from autopilot.core.session import BaseSessionService, InMemorySessionService
 from autopilot.core.memory import BaseMemoryService, InMemoryMemoryService, Observation
 
@@ -35,8 +34,8 @@ class AgentContext:
     """
     Execution context passed to every agent in a pipeline.
 
-    Created once per pipeline run by the PipelineRunner and threaded
-    through each agent invocation.  Agents can read state, emit events,
+    Created once per pipeline run by the ADKRunner and threaded
+    through each agent invocation.  Agents can read state, publish events,
     use session for short-term KV storage, and use memory for long-term
     semantic recall — all without importing anything.
 
@@ -48,7 +47,6 @@ class AgentContext:
         metadata: Immutable, user-provided run metadata (trigger info, etc.).
         session: Short-term session service (always present).
         memory: Long-term memory service (always present).
-        _stream_id: Internal stream ID for the EventBus.
         _started_at: Monotonic timestamp for duration tracking.
     """
 
@@ -57,12 +55,11 @@ class AgentContext:
     state: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
 
-    # V3 — Session & Memory (auto-provisioned if not injected)
+    # Session & Memory (auto-provisioned if not injected)
     session: BaseSessionService = field(default=None)
     memory: BaseMemoryService = field(default=None)
 
     # Internal — not part of the public API but not hidden either.
-    _stream_id: str = ""
     _started_at: float = field(default_factory=time.monotonic)
 
     def __post_init__(self):
@@ -76,30 +73,59 @@ class AgentContext:
             execution_id=self.execution_id,
             pipeline=self.pipeline_name,
         )
-        if not self._stream_id:
-            object.__setattr__(self, "_stream_id", self.execution_id)
 
-    # ── Event Emission ───────────────────────────────────────────────
+    # ── Event Bus (Unified) ──────────────────────────────────────────
 
-    async def emit(self, event_type: str, data: dict[str, Any] | None = None) -> None:
+    @property
+    def bus(self):
         """
-        Publish an event to the platform EventBus.
+        Access the global EventBus for all event communication.
 
-        Events are delivered in real-time to SSE subscribers (dashboard, CLI)
-        and can be used for monitoring, alerting, and debugging.
+        Returns:
+            The platform-wide ``EventBus`` singleton.
+
+        Usage::
+
+            # Subscribe to events:
+            ctx.bus.subscribe("agent.error", my_handler)
+
+            # Publish events:
+            await ctx.bus.publish("agent.completed", {"result": ...})
+        """
+        from autopilot.core.bus import get_event_bus
+
+        return get_event_bus()
+
+    async def publish(self, topic: str, payload: dict | None = None) -> None:
+        """
+        Convenience: publish an event to the unified EventBus.
+
+        Automatically sets ``sender`` to the current pipeline name
+        and ``correlation_id`` to the execution_id.
 
         Args:
-            event_type: Short slug like "step_started", "step_completed".
-            data: Optional payload merged into the event envelope.
+            topic: Dot-separated topic (e.g. ``"pipeline.started"``,
+                   ``"stage.completed"``, ``"transaction.created"``).
+            payload: Optional data dict merged into the event.
         """
-        event_bus = get_event_bus()
-        payload = {
-            "type": event_type,
-            "execution_id": self.execution_id,
-            "pipeline": self.pipeline_name,
-            **(data or {}),
-        }
-        await event_bus.emit(self._stream_id, payload)
+        await self.bus.publish(
+            topic,
+            {
+                "execution_id": self.execution_id,
+                "pipeline": self.pipeline_name,
+                **(payload or {}),
+            },
+            sender=self.pipeline_name,
+            correlation_id=self.execution_id,
+        )
+
+    def subscribe(self, topic: str, handler) -> Any:
+        """
+        Convenience: subscribe to EventBus messages.
+
+        Returns a ``Subscription`` handle for unsubscribing.
+        """
+        return self.bus.subscribe(topic, handler)
 
     # ── State Management ─────────────────────────────────────────────
 
@@ -175,44 +201,6 @@ class AgentContext:
 
         return get_tool_registry()
 
-    # ── Agent Bus (A2A) ──────────────────────────────────────────────
-
-    @property
-    def bus(self):
-        """
-        Access the global Agent Bus for inter-agent messaging.
-
-        Returns:
-            The platform-wide ``AgentBus`` singleton.
-
-        Usage::
-
-            # Subscribe to events:
-            ctx.bus.subscribe("agent.error", my_handler)
-
-            # Publish events:
-            await ctx.bus.publish("agent.completed", {"result": ...})
-        """
-        from autopilot.core.bus import get_agent_bus
-
-        return get_agent_bus()
-
-    async def publish(self, topic: str, payload: dict | None = None) -> None:
-        """
-        Convenience: publish a message to the Agent Bus.
-
-        Automatically sets ``sender`` to the current pipeline name.
-        """
-        await self.bus.publish(topic, payload or {}, sender=self.pipeline_name)
-
-    def subscribe(self, topic: str, handler) -> Any:
-        """
-        Convenience: subscribe to Agent Bus messages.
-
-        Returns a ``Subscription`` handle for unsubscribing.
-        """
-        return self.bus.subscribe(topic, handler)
-
     # ── Child Context ────────────────────────────────────────────────
 
     def for_step(self, step_name: str) -> AgentContext:
@@ -229,7 +217,6 @@ class AgentContext:
             metadata=self.metadata,
             session=self.session,  # Shared — same session across steps
             memory=self.memory,  # Shared — same memory across steps
-            _stream_id=self._stream_id,
             _started_at=self._started_at,
         )
         child.logger = self.logger.bind(step=step_name)

@@ -1,15 +1,23 @@
 """
-PipelineRunner — Platform-level pipeline execution engine.
+ADKRunner — Platform-level ADK Runtime Bridge.
 
-Wraps ADK Runner + InMemorySessionService + EventBus into a single
-entry point for running any multi-agent pipeline.
+Wraps Google ADK's `Runner` + `SessionService` into a single entry point
+for executing any native ADK agent (LlmAgent, SequentialAgent, ParallelAgent,
+LoopAgent, Custom agents).
+
+This is the ONLY way ADK agents are executed within the platform. It adds:
+  - Retry with exponential backoff (503, 429, timeout resilience)
+  - EventBus integration (pipeline.adk_started, adk_completed, error)
+  - OpenTelemetry tracing spans
+  - Structured result extraction (PipelineResult)
+  - Function call response handling (Native Output Schema)
 
 Usage:
-    from autopilot.agents.pipeline_runner import get_pipeline_runner
+    from autopilot.core.adk_runner import get_adk_runner
 
-    runner = get_pipeline_runner()
+    runner = get_adk_runner()
     result = await runner.run(
-        pipeline=my_pipeline,
+        agent=my_adk_agent,
         message="Process this input...",
         initial_state={"key": "value"},
     )
@@ -40,13 +48,13 @@ from google.api_core.exceptions import (
     DeadlineExceeded,
 )
 from autopilot.errors import LLMRateLimitError, ConnectorError, ToolExecutionError
-from autopilot.services.event_bus import get_event_bus
+from autopilot.core.bus import get_event_bus
 
 logger = structlog.get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 
-class PipelineRunner:
+class ADKRunner:
     def __init__(self, app_name: str, user_id: str):
         self._app_name = app_name
         self._user_id = user_id
@@ -89,7 +97,6 @@ class PipelineRunner:
             PipelineResult with final text, parsed JSON, session state, and timing.
         """
         session_id = f"pipeline_{uuid4().hex[:12]}"
-        get_event_bus()
         effective_stream_id = stream_session_id or session_id
 
         return await self._run_adk_agent(
@@ -103,17 +110,17 @@ class PipelineRunner:
         initial_state: dict[str, Any] | None,
         effective_stream_id: str,
     ) -> PipelineResult:
-        """Original logic for running a single ADK agent."""
+        """Execute the ADK agent through Runner + SessionService."""
         with tracer.start_as_current_span(
-            "pipeline_runner.run",
+            "adk_runner.run",
             attributes={
                 "app_name": self._app_name,
-                "pipeline_name": getattr(pipeline, "name", "unknown"),
+                "agent_name": getattr(pipeline, "name", "unknown"),
             },
         ) as span:
             session_id = f"pipeline_{uuid4().hex[:12]}"
             span.set_attribute("session_id", session_id)
-            event_bus = get_event_bus()
+            bus = get_event_bus()
 
         # Set the event bus session context so callbacks can stream events
         token = pipeline_session_id.set(effective_stream_id)
@@ -142,27 +149,27 @@ class PipelineRunner:
             )
 
             logger.info(
-                "pipeline_started",
+                "adk_runner_started",
                 app_name=self._app_name,
                 session_id=session_id,
                 stream_session_id=effective_stream_id,
                 message_length=len(message),
-                pipeline_name=getattr(pipeline, "name", "unknown"),
+                agent_name=getattr(pipeline, "name", "unknown"),
             )
 
-            # Emit pipeline_started event
-            await event_bus.emit(
-                effective_stream_id,
+            # Publish pipeline_started event to unified bus
+            await bus.publish(
+                "pipeline.adk_started",
                 {
-                    "type": "pipeline_started",
                     "session_id": session_id,
-                    "pipeline_name": getattr(pipeline, "name", "unknown"),
+                    "agent_name": getattr(pipeline, "name", "unknown"),
                 },
+                sender="adk_runner",
             )
 
-            span.add_event("pipeline_started")
+            span.add_event("adk_runner_started")
 
-            # Run the pipeline
+            # Run the agent
             final_text = ""
             async for event in runner.run_async(
                 user_id=self._user_id,
@@ -183,9 +190,6 @@ class PipelineRunner:
                                     try:
                                         import json
 
-                                        # Use the function call args as the "response text" (JSON)
-                                        # This ensures we don't trigger PipelineEmptyResponseError
-                                        # and parsed_json below will work naturally.
                                         fc_data = dict(p.function_call.args)
                                         final_text = json.dumps(fc_data)
                                         break
@@ -198,16 +202,17 @@ class PipelineRunner:
             elapsed_ms = round((time.monotonic() - start) * 1000, 2)
 
             if not final_text:
-                await event_bus.emit(
-                    effective_stream_id,
+                await bus.publish(
+                    "pipeline.error",
                     {
-                        "type": "pipeline_error",
                         "error": "Pipeline returned no final response.",
+                        "session_id": session_id,
                     },
+                    sender="adk_runner",
                 )
                 raise PipelineEmptyResponseError(
                     "Pipeline returned no final response.",
-                    detail=f"pipeline={getattr(pipeline, 'name', 'unknown')}, session={session_id}",
+                    detail=f"agent={getattr(pipeline, 'name', 'unknown')}, session={session_id}",
                 )
 
             # Extract JSON with robust fallback
@@ -227,23 +232,23 @@ class PipelineRunner:
             )
 
             logger.info(
-                "pipeline_completed",
+                "adk_runner_completed",
                 app_name=self._app_name,
                 session_id=session_id,
-                pipeline_name=getattr(pipeline, "name", "unknown"),
+                agent_name=getattr(pipeline, "name", "unknown"),
                 duration_ms=elapsed_ms,
                 final_text_length=len(final_text),
                 has_parsed_json=bool(parsed_json),
             )
 
-            # Emit pipeline_completed event
-            await event_bus.emit(
-                effective_stream_id,
+            # Publish pipeline_completed event to unified bus
+            await bus.publish(
+                "pipeline.adk_completed",
                 {
-                    "type": "pipeline_completed",
                     "session_id": session_id,
                     "duration_ms": elapsed_ms,
                 },
+                sender="adk_runner",
             )
 
             return PipelineResult(
@@ -257,36 +262,36 @@ class PipelineRunner:
         except Exception as e:
             span.record_exception(e)
             span.set_status(trace.StatusCode.ERROR, str(e))
-            await event_bus.emit(
-                effective_stream_id,
+            await bus.publish(
+                "pipeline.error",
                 {
-                    "type": "pipeline_error",
                     "error": str(e),
+                    "session_id": effective_stream_id,
                 },
+                sender="adk_runner",
             )
             raise
 
         finally:
-            # End the event bus stream and reset context
-            await event_bus.end_stream(effective_stream_id)
+            # Reset pipeline context
             pipeline_session_id.reset(token)
 
 
 # ── Singleton ─────────────────────────────────────────────────────────
 
-_runners: dict[str, PipelineRunner] = {}
+_runners: dict[str, ADKRunner] = {}
 
 
-def get_pipeline_runner(
+def get_adk_runner(
     app_name: str = "autopilot",
     user_id: str = "default_user",
-) -> PipelineRunner:
+) -> ADKRunner:
     """
-    Get or create a PipelineRunner singleton for the given app_name.
+    Get or create an ADKRunner singleton for the given app_name.
 
     Each unique app_name gets its own Runner with its own session service.
     """
     key = f"{app_name}:{user_id}"
     if key not in _runners:
-        _runners[key] = PipelineRunner(app_name=app_name, user_id=user_id)
+        _runners[key] = ADKRunner(app_name=app_name, user_id=user_id)
     return _runners[key]

@@ -11,6 +11,7 @@ Workflow-specific metrics (pipeline, YNAB, cache) live in each workflow's
 own metrics module.
 """
 
+import os
 import time
 import structlog
 from contextlib import contextmanager
@@ -31,19 +32,28 @@ _tracer: trace.Tracer | None = None
 
 
 def setup_tracing(
-    service_name: str = "bank-to-ynab",
+    service_name: str | None = None,
     otlp_endpoint: str | None = None,
 ) -> trace.Tracer:
     """
     Initialize OpenTelemetry tracing.
 
+    Exporter hierarchy (3-tier):
+      1. OTLP endpoint provided → OTLPSpanExporter
+      2. Cloud Run (K_SERVICE set) → CloudTraceSpanExporter
+      3. Default → ConsoleSpanExporter (local dev)
+
     Args:
         service_name: Name of the service (appears in traces).
-        otlp_endpoint: OTLP collector endpoint. If None, uses console exporter.
+                      Defaults to K_SERVICE env var (Cloud Run) or APP_NAME.
+        otlp_endpoint: OTLP collector endpoint.
     """
     global _tracer
 
-    from autopilot.version import VERSION
+    from autopilot.version import APP_NAME, VERSION
+
+    if service_name is None:
+        service_name = os.getenv("K_SERVICE", APP_NAME.lower())
 
     resource = Resource.create(
         {"service.name": service_name, "service.version": VERSION}
@@ -61,6 +71,16 @@ def setup_tracing(
             logger.info("otel_otlp_configured", endpoint=otlp_endpoint)
         except ImportError:
             logger.warning("otel_otlp_unavailable_fallback_console")
+            provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+    elif os.getenv("K_SERVICE"):
+        try:
+            from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
+
+            exporter = CloudTraceSpanExporter()
+            provider.add_span_processor(BatchSpanProcessor(exporter))
+            logger.info("otel_cloud_trace_configured", service=service_name)
+        except ImportError:
+            logger.warning("otel_cloud_trace_unavailable_fallback_console")
             provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
     else:
         # Console exporter for local development

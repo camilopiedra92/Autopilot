@@ -30,8 +30,8 @@ _call_start_times: contextvars.ContextVar[dict[str, float]] = contextvars.Contex
 )
 
 # ── Event bus session ID for the current pipeline context ────────────
-# Set by PipelineRunner before invoking the pipeline so callbacks
-# can emit events to the correct SSE stream.
+# Set by ADKRunner before invoking the pipeline so callbacks
+# can publish events with the correct correlation ID.
 pipeline_session_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "pipeline_session_id", default=None
 )
@@ -46,32 +46,33 @@ def _get_times() -> dict[str, float]:
     return times
 
 
-def _emit_event_async(event: dict) -> None:
+def _publish_event_async(topic: str, payload: dict) -> None:
     """
-    Fire-and-forget emit an event to the pipeline's event bus.
+    Fire-and-forget publish an event to the unified EventBus.
 
     Non-blocking: creates a task if a running loop exists,
     otherwise silently skips (e.g. in tests or sync contexts).
     """
-    session_id = pipeline_session_id.get(None)
-    if not session_id:
-        return
-
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         return  # No loop — skip (sync context / tests)
 
-    async def _emit():
+    async def _do_publish():
         try:
-            from autopilot.services.event_bus import get_event_bus
+            from autopilot.core.bus import get_event_bus
 
             bus = get_event_bus()
-            await bus.emit(session_id, event)
+            session_id = pipeline_session_id.get(None)
+            await bus.publish(
+                topic,
+                {**payload, "session_id": session_id or ""},
+                sender="adk_callback",
+            )
         except Exception:
             pass  # Never let event bus errors break the pipeline
 
-    loop.create_task(_emit())
+    loop.create_task(_do_publish())
 
 
 def before_model_logger(
@@ -97,15 +98,14 @@ def before_model_logger(
         context_messages=message_count,
     )
 
-    # Emit "started" event to SSE stream
-    _emit_event_async(
+    # Publish "started" event to unified bus
+    _publish_event_async(
+        "model.started",
         {
-            "type": "stage_started",
-            "stage": agent_name,
-            "status": "running",
+            "agent": agent_name,
             "tools_available": tool_count,
             "context_messages": message_count,
-        }
+        },
     )
 
     return None  # Always proceed
@@ -143,16 +143,15 @@ def after_model_logger(
     AGENT_CALLS.labels(agent_name=agent_name, status="success").inc()
     AGENT_LATENCY.labels(agent_name=agent_name).observe(latency_s)
 
-    # ── Emit "completed" event to SSE stream ──────────────────────────
-    _emit_event_async(
+    # ── Publish "completed" event to unified bus ──────────────────────
+    _publish_event_async(
+        "model.completed",
         {
-            "type": "stage_completed",
-            "stage": agent_name,
-            "status": "completed",
+            "agent": agent_name,
             "latency_ms": latency_ms,
             "response_length": response_length,
             "has_tool_calls": has_tool_calls,
-        }
+        },
     )
 
     return None  # Never modify the response

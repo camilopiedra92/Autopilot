@@ -56,15 +56,15 @@ class ReactRunner:
         start = time.monotonic()
 
         ctx.logger.info("react_started", runner=self.name, agent=self.agent.name)
-        await ctx.emit(
-            "react_started",
+        await ctx.publish(
+            "react.started",
             {"runner": self.name, "max_iterations": self.max_iterations},
         )
 
         try:
             for iteration in range(1, self.max_iterations + 1):
                 ctx.logger.info("react_iteration_started", iteration=iteration)
-                await ctx.emit("react_iteration_started", {"iteration": iteration})
+                await ctx.publish("react.iteration_started", {"iteration": iteration})
 
                 # Let the agent reason and act
                 output = await self.agent.invoke(ctx, ctx.state)
@@ -75,14 +75,14 @@ class ReactRunner:
                 result.steps_completed.append(f"react_iter_{iteration}")
 
                 ctx.logger.info("react_iteration_completed", iteration=iteration)
-                await ctx.emit("react_iteration_completed", {"iteration": iteration})
+                await ctx.publish("react.iteration_completed", {"iteration": iteration})
 
                 # Check for termination sequence signaling the goal is met
                 if ctx.state.get("react_finished") is True or (
                     isinstance(output, dict) and output.get("react_finished") is True
                 ):
                     ctx.logger.info("react_goal_met", iteration=iteration)
-                    await ctx.emit("react_goal_met", {"iteration": iteration})
+                    await ctx.publish("react.goal_met", {"iteration": iteration})
                     break
 
             else:
@@ -96,7 +96,7 @@ class ReactRunner:
             result.success = False
             result.error = str(exc)
             ctx.logger.error("react_failed", runner=self.name, error=str(exc))
-            await ctx.emit("react_failed", {"runner": self.name, "error": str(exc)})
+            await ctx.publish("react.failed", {"runner": self.name, "error": str(exc)})
             raise
         finally:
             elapsed = round((time.monotonic() - start) * 1000, 2)
@@ -107,8 +107,8 @@ class ReactRunner:
                 ctx.logger.info(
                     "react_completed", runner=self.name, duration_ms=elapsed
                 )
-                await ctx.emit(
-                    "react_completed", {"runner": self.name, "duration_ms": elapsed}
+                await ctx.publish(
+                    "react.completed", {"runner": self.name, "duration_ms": elapsed}
                 )
 
         return result

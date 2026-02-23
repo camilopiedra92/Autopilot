@@ -137,8 +137,8 @@ class Pipeline:
                 initial_keys=list(ctx.state.keys()),
             )
 
-        await ctx.emit(
-            "pipeline_started",
+        await ctx.publish(
+            "pipeline.started",
             {
                 "pipeline": self.name,
                 "step_count": len(self.steps),
@@ -158,7 +158,7 @@ class Pipeline:
                 step_start = time.monotonic()
 
                 ctx.logger.info("step_started", step=step.name)
-                await ctx.emit("step_started", {"step": step.name})
+                await ctx.publish("stage.started", {"step": step.name})
 
                 # Each step receives the FULL accumulated state as input
                 step_output = await step.invoke(ctx, ctx.state)
@@ -182,8 +182,8 @@ class Pipeline:
                     duration_ms=step_elapsed,
                     output_keys=list(step_output.keys()) if step_output else [],
                 )
-                await ctx.emit(
-                    "step_completed",
+                await ctx.publish(
+                    "stage.completed",
                     {
                         "step": step.name,
                         "duration_ms": step_elapsed,
@@ -193,7 +193,7 @@ class Pipeline:
                 # Human-In-The-Loop Pause Check
                 if ctx.state.get("hitl_requested") is True:
                     ctx.logger.info("pipeline_paused_for_hitl", step=step.name)
-                    await ctx.emit("pipeline_paused", {"step": step.name})
+                    await ctx.publish("pipeline.paused", {"step": step.name})
                     result.paused = True
                     # Clear the flag so it doesn't immediately re-pause when resumed
                     ctx.state["hitl_requested"] = False
@@ -210,8 +210,8 @@ class Pipeline:
                 step=step.name if "step" in dir() else "unknown",
                 error=str(exc),
             )
-            await ctx.emit(
-                "pipeline_failed",
+            await ctx.publish(
+                "pipeline.failed",
                 {
                     "pipeline": self.name,
                     "error": str(exc),
@@ -231,8 +231,8 @@ class Pipeline:
                     duration_ms=elapsed,
                     steps_completed=result.steps_completed,
                 )
-                await ctx.emit(
-                    "pipeline_completed",
+                await ctx.publish(
+                    "pipeline.completed",
                     {
                         "pipeline": self.name,
                         "duration_ms": elapsed,

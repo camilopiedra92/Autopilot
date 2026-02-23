@@ -1,4 +1,13 @@
+"""
+API Security — X-API-Key header validation for protected endpoints.
+
+Validates inbound HTTP requests against the API_KEY_SECRET environment variable
+using timing-safe comparison to prevent side-channel attacks.
+"""
+
+import hmac
 import os
+
 from fastapi import HTTPException, Security
 from fastapi.security import APIKeyHeader
 from starlette.status import HTTP_401_UNAUTHORIZED
@@ -21,7 +30,7 @@ def get_api_key(api_key: str = Security(api_key_header)) -> str:
             detail="API_KEY_SECRET is not configured on the server",
         )
 
-    if api_key != secret:
+    if not api_key or not hmac.compare_digest(api_key, secret):
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail="Invalid API Key",

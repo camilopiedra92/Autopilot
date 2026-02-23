@@ -1,12 +1,12 @@
 """
-Tests for autopilot.core.bus — Agent Bus (A2A) typed pub/sub messaging.
+Tests for autopilot.core.bus — Unified Event Bus typed pub/sub messaging.
 
 Covers:
   - AgentMessage: creation, defaults, serialization
-  - AgentBus: subscribe, publish, unsubscribe, history, clear
+  - EventBus: subscribe, publish, unsubscribe, history, clear, middleware, replay
   - Wildcard topic matching
   - Dead-letter isolation (handler errors don't block others)
-  - Singleton: get_agent_bus / reset_agent_bus
+  - Singleton: get_event_bus / reset_event_bus
   - AgentContext integration: ctx.bus, ctx.publish(), ctx.subscribe()
 """
 
@@ -14,11 +14,11 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
 from autopilot.core.bus import (
-    AgentBus,
+    EventBus,
     AgentMessage,
     Subscription,
-    get_agent_bus,
-    reset_agent_bus,
+    get_event_bus,
+    reset_event_bus,
 )
 from autopilot.core.context import AgentContext
 from autopilot.errors import BusError, BusTimeoutError
@@ -31,16 +31,16 @@ from autopilot.errors import BusError, BusTimeoutError
 
 @pytest.fixture
 def bus():
-    """Fresh AgentBus for each test."""
-    return AgentBus()
+    """Fresh EventBus for each test."""
+    return EventBus()
 
 
 @pytest.fixture(autouse=True)
 def reset_singleton():
     """Ensure singleton is reset between tests."""
-    reset_agent_bus()
+    reset_event_bus()
     yield
-    reset_agent_bus()
+    reset_event_bus()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -301,7 +301,7 @@ class TestHistory:
     @pytest.mark.asyncio
     async def test_history_limit(self):
         """Ring buffer respects max capacity."""
-        bus = AgentBus(history_limit=3)
+        bus = EventBus(history_limit=3)
 
         for i in range(10):
             await bus.publish("topic", {"n": i})
@@ -346,7 +346,7 @@ class TestClearReset:
 
     def test_repr(self, bus):
         r = repr(bus)
-        assert "AgentBus" in r
+        assert "EventBus" in r
         assert "subscriptions=0" in r
 
 
@@ -356,17 +356,17 @@ class TestClearReset:
 
 
 class TestSingleton:
-    def test_get_agent_bus_returns_same_instance(self):
-        """get_agent_bus() returns the same instance each time."""
-        bus1 = get_agent_bus()
-        bus2 = get_agent_bus()
+    def test_get_event_bus_returns_same_instance(self):
+        """get_event_bus() returns the same instance each time."""
+        bus1 = get_event_bus()
+        bus2 = get_event_bus()
         assert bus1 is bus2
 
-    def test_reset_agent_bus_provides_fresh_instance(self):
-        """reset_agent_bus() provides a fresh instance."""
-        bus1 = get_agent_bus()
-        reset_agent_bus()
-        bus2 = get_agent_bus()
+    def test_reset_event_bus_provides_fresh_instance(self):
+        """reset_event_bus() provides a fresh instance."""
+        bus1 = get_event_bus()
+        reset_event_bus()
+        bus2 = get_event_bus()
         assert bus1 is not bus2
 
 
@@ -377,49 +377,34 @@ class TestSingleton:
 
 class TestContextIntegration:
     def test_context_bus_property(self):
-        """ctx.bus returns the global AgentBus."""
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus = MagicMock()
-            mock_bus.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus
-
-            ctx = AgentContext(pipeline_name="test")
-            bus = ctx.bus
-            assert isinstance(bus, AgentBus)
-            assert bus is get_agent_bus()
+        """ctx.bus returns the global EventBus."""
+        ctx = AgentContext(pipeline_name="test")
+        bus = ctx.bus
+        assert isinstance(bus, EventBus)
+        assert bus is get_event_bus()
 
     @pytest.mark.asyncio
     async def test_context_publish_convenience(self):
         """ctx.publish() delegates to bus.publish with correct sender."""
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus_ev = MagicMock()
-            mock_bus_ev.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus_ev
+        received = []
 
-            received = []
+        async def handler(msg):
+            received.append(msg)
 
-            async def handler(msg):
-                received.append(msg)
+        ctx = AgentContext(pipeline_name="my_pipeline")
+        ctx.bus.subscribe("agent.done", handler)
+        await ctx.publish("agent.done", {"status": "ok"})
 
-            ctx = AgentContext(pipeline_name="my_pipeline")
-            ctx.subscribe("agent.done", handler)
-
-            await ctx.publish("agent.done", {"status": "ok"})
-
-            assert len(received) == 1
-            assert received[0].sender == "my_pipeline"
-            assert received[0].payload == {"status": "ok"}
+        assert len(received) == 1
+        assert received[0].sender == "my_pipeline"
+        assert "status" in received[0].payload
+        assert received[0].payload["status"] == "ok"
 
     def test_context_subscribe_convenience(self):
         """ctx.subscribe() returns a Subscription handle."""
-        with patch("autopilot.core.context.get_event_bus") as mock_bus_fn:
-            mock_bus_ev = MagicMock()
-            mock_bus_ev.emit = AsyncMock()
-            mock_bus_fn.return_value = mock_bus_ev
-
-            ctx = AgentContext(pipeline_name="test")
-            sub = ctx.subscribe("topic", AsyncMock())
-            assert isinstance(sub, Subscription)
+        ctx = AgentContext(pipeline_name="test")
+        sub = ctx.subscribe("topic", AsyncMock())
+        assert isinstance(sub, Subscription)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

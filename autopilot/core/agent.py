@@ -102,7 +102,7 @@ class BaseAgent(abc.ABC, Generic[InputT, OutputT]):
             step_ctx = ctx.for_step(self.name)
             step_ctx.logger.info("agent_started", agent=self.name)
 
-            await ctx.emit("agent_started", {"agent": self.name})
+            await ctx.publish("agent.started", {"agent": self.name})
 
             start = time.monotonic()
             try:
@@ -114,8 +114,8 @@ class BaseAgent(abc.ABC, Generic[InputT, OutputT]):
                     agent=self.name,
                     duration_ms=elapsed,
                 )
-                await ctx.emit(
-                    "agent_completed",
+                await ctx.publish(
+                    "agent.completed",
                     {
                         "agent": self.name,
                         "duration_ms": elapsed,
@@ -131,8 +131,8 @@ class BaseAgent(abc.ABC, Generic[InputT, OutputT]):
                     duration_ms=elapsed,
                     error=str(exc),
                 )
-                await ctx.emit(
-                    "agent_failed",
+                await ctx.publish(
+                    "agent.failed",
                     {
                         "agent": self.name,
                         "duration_ms": elapsed,
@@ -276,7 +276,7 @@ class ADKAgent(BaseAgent[dict, dict]):
     Wraps a Google ADK LlmAgent (or any ADK agent) as a BaseAgent.
 
     Bridges the ADK's Runner/Session model into our typed pipeline.
-    The wrapped agent is run via PipelineRunner and its output
+    The wrapped agent is run via ADKRunner and its output
     is returned as a dict ready for state merging.
     """
 
@@ -289,14 +289,14 @@ class ADKAgent(BaseAgent[dict, dict]):
 
     async def run(self, ctx: AgentContext, input: dict) -> dict:
         """
-        Run the ADK agent through the PipelineRunner.
+        Run the ADK agent through the ADKRunner.
 
-        Uses the existing PipelineRunner._run_adk_agent path so that
+        Uses the existing ADKRunner._run_adk_agent path so that
         all ADK features (tools, memory, structured output) work.
         """
-        from autopilot.agents.pipeline_runner import get_pipeline_runner
+        from autopilot.core.adk_runner import get_adk_runner
 
-        runner = get_pipeline_runner(ctx.pipeline_name or "autopilot")
+        runner = get_adk_runner(ctx.pipeline_name or "autopilot")
 
         # Build the message from the state
         message = input.get("message", "")
@@ -309,7 +309,7 @@ class ADKAgent(BaseAgent[dict, dict]):
             pipeline=self._adk_agent,
             message=message,
             initial_state=ctx.state,
-            stream_session_id=ctx._stream_id,
+            stream_session_id=ctx.execution_id,
         )
 
         output_key = getattr(self._adk_agent, "output_key", None)
@@ -403,8 +403,8 @@ class SequentialAgentAdapter(BaseAgent[dict, dict]):
             if child_output:
                 state.update(child_output)
 
-            await ctx.emit(
-                "sequence_step_completed",
+            await ctx.publish(
+                "sequence.step_completed",
                 {
                     "adapter": self.name,
                     "child": child.name,
@@ -460,8 +460,8 @@ class LoopAgentAdapter(BaseAgent[dict, dict]):
             if body_output:
                 state.update(body_output)
 
-            await ctx.emit(
-                "loop_iteration",
+            await ctx.publish(
+                "loop.iteration",
                 {
                     "adapter": self.name,
                     "iteration": iteration,
@@ -523,8 +523,8 @@ class ParallelAgentAdapter(BaseAgent[dict, dict]):
 
         async def _run_branch(branch: BaseAgent) -> dict:
             result = await branch.invoke(ctx, frozen_input)
-            await ctx.emit(
-                "parallel_branch_completed",
+            await ctx.publish(
+                "parallel.branch_completed",
                 {
                     "adapter": self.name,
                     "branch": branch.name,
@@ -587,8 +587,8 @@ class FallbackAgentAdapter(BaseAgent[dict, dict]):
                 fallback=self.fallback.name,
                 error=str(exc),
             )
-            await ctx.emit(
-                "fallback_triggered",
+            await ctx.publish(
+                "fallback.triggered",
                 {
                     "adapter": self.name,
                     "failed_agent": self.primary.name,

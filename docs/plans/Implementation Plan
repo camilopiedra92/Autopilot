@@ -1,0 +1,365 @@
+# 🏗️ Autopilot Platform — World-Class Architecture Audit
+
+> **Scope**: Full deep-dive of the Autopilot codebase — every module, connector, test, tool, CI/CD pipeline, and Dockerfile — evaluated against [ARCHITECTURE.md](file:///Users/camilopiedra/Development/Autopilot/docs/ARCHITECTURE.md) and Google ADK latest standards.
+
+---
+
+## Executive Summary
+
+The platform has **exceptionally strong architectural foundations** — factory agents, typed BaseAgent contract, DAG/ReAct/Router orchestration, declarative DSL, tool ecosystem with lifecycle callbacks, session/memory abstraction, structured error taxonomy, and A2A bus. This is already far ahead of most agentic platforms.
+
+However, the audit found **21 specific items** across three categories:
+
+| Category                                           | Count | Impact                |
+| -------------------------------------------------- | ----- | --------------------- |
+| 🗑️ **ELIMINATE** (tech debt, junk, duplicates)     | 8     | Immediate cleanup     |
+| 🔧 **ADJUST** (misalignments, suboptimal patterns) | 7     | Edge → World-Class    |
+| ✨ **ADD** (missing world-class capabilities)      | 6     | Competitive advantage |
+
+---
+
+## 🗑️ ELIMINATE — Remove Immediately
+
+### ✅ E1. Root-Level Orphan Scripts (8 files) — DONE
+
+> [!CAUTION]
+> **8 debugging scripts** scattered at the project root violate the "no legacy code path" rule (ARCHITECTURE.md §9.4).
+
+| File                                                                                              | Purpose            | Action |
+| ------------------------------------------------------------------------------------------------- | ------------------ | ------ |
+| [check_email_labels.py](file:///Users/camilopiedra/Development/Autopilot/check_email_labels.py)   | Debug Gmail labels | DELETE |
+| [check_email_labels2.py](file:///Users/camilopiedra/Development/Autopilot/check_email_labels2.py) | Dupe of above      | DELETE |
+| [check_email_time.py](file:///Users/camilopiedra/Development/Autopilot/check_email_time.py)       | Debug time         | DELETE |
+| [check_gmail.py](file:///Users/camilopiedra/Development/Autopilot/check_gmail.py)                 | Debug Gmail        | DELETE |
+| [check_gmail2.py](file:///Users/camilopiedra/Development/Autopilot/check_gmail2.py)               | Dupe of above      | DELETE |
+| [check_history_id.py](file:///Users/camilopiedra/Development/Autopilot/check_history_id.py)       | Debug history      | DELETE |
+| [stop_watch.py](file:///Users/camilopiedra/Development/Autopilot/stop_watch.py)                   | Stop Gmail watch   | DELETE |
+| [test_func.py](file:///Users/camilopiedra/Development/Autopilot/test_func.py)                     | Test scratch       | DELETE |
+
+Also delete auxiliary files:
+
+- [test_real_world.py](file:///Users/camilopiedra/Development/Autopilot/test_real_world.py) — scratch test
+- [test_union.py](file:///Users/camilopiedra/Development/Autopilot/test_union.py) — scratch test
+- [deploy_test.sh](file:///Users/camilopiedra/Development/Autopilot/deploy_test.sh) — one-off deploy script
+- [cr_spec.json](file:///Users/camilopiedra/Development/Autopilot/cr_spec.json) — Cloud Run spec dump
+
+**Impact**: Cleaner root, no accidental docker image bloat (even with `.dockerignore`).
+
+> [!NOTE]
+> **COMPLETED** — All 12 root-level orphan scripts deleted.
+
+---
+
+### ✅ E2. Duplicate Event Bus — `PipelineEventBus` vs `AgentBus` — DONE
+
+> [!WARNING]
+> Two separate pub/sub systems exist, violating the single-bus architecture principle.
+
+| Component          | Location                                                                                         | Purpose                             |
+| ------------------ | ------------------------------------------------------------------------------------------------ | ----------------------------------- |
+| `PipelineEventBus` | [event_bus.py](file:///Users/camilopiedra/Development/Autopilot/autopilot/services/event_bus.py) | `asyncio.Queue`-based SSE streaming |
+| `AgentBus`         | [bus.py](file:///Users/camilopiedra/Development/Autopilot/autopilot/core/bus.py)                 | Typed A2A pub/sub messaging         |
+
+**Problem**: `AgentContext.__post_init__` imports from `autopilot.services.event_bus` (PipelineEventBus) for SSE, while also exposing `AgentBus` for agent communication. Two buses = split observability, duplicate concepts, confusing API surface.
+
+**Recommendation**: Merge `PipelineEventBus` into `AgentBus` as a **topic namespace** (e.g., `pipeline.step_started`, `pipeline.step_completed`). SSE streams should subscribe to `pipeline.*` topics on the `AgentBus`. Eliminate `autopilot/services/event_bus.py` entirely.
+
+> [!NOTE]
+> **COMPLETED** — Unified `EventBus` with `EventBusProtocol` ABC, middleware chain, and `replay()`. All 30+ `ctx.emit()` callsites migrated to `ctx.publish()`. `PipelineEventBus` deleted. 321 tests passing.
+
+---
+
+### ✅ E3. Legacy `requirements.txt` — DONE
+
+The project uses [pyproject.toml](file:///Users/camilopiedra/Development/Autopilot/pyproject.toml) for dependencies but also maintained a `requirements.txt`. The Dockerfile uses `pip install .` (pyproject.toml). The `requirements.txt` was orphaned dead code — zero consumers (not used by Docker, CI, or local dev) and out of sync (missing 5 deps).
+
+**Action**: DELETE `requirements.txt`.
+
+> [!NOTE]
+> **COMPLETED** — `requirements.txt` deleted. `pyproject.toml` is the single source of truth for all dependency management (PEP 621).
+
+---
+
+### ✅ E4. `credentials.json` + `token.json` at Root — DONE
+
+> [!CAUTION]
+> **Security risk**: OAuth credentials committed to the repo root.
+
+| File                                                                                  | Risk                                    |
+| ------------------------------------------------------------------------------------- | --------------------------------------- |
+| [credentials.json](file:///Users/camilopiedra/Development/Autopilot/credentials.json) | OAuth client secret — **NEVER** in repo |
+| [token.json](file:///Users/camilopiedra/Development/Autopilot/token.json)             | OAuth refresh token — **NEVER** in repo |
+
+**Action**: Add to `.gitignore` immediately (if not already). Verify these are NOT in git history. If they are, rotate credentials and scrub with `git filter-repo`.
+
+> [!NOTE]
+> **COMPLETED** — Both files already in `.gitignore` (lines 19-20). Verified NOT tracked and NEVER committed to git history.
+
+---
+
+### ✅ E5. `autopilot/services/` Directory — Nearly Empty — DONE
+
+The entire `autopilot/services/` directory contains only 2 files:
+
+- `__init__.py` (57 bytes)
+- `event_bus.py` (to be merged into `AgentBus` per E2)
+
+**Action**: After E2, delete the entire `autopilot/services/` directory.
+
+> [!NOTE]
+> **COMPLETED** — Entire `autopilot/services/` directory deleted as part of E2.
+
+---
+
+### ✅ E6. `autopilot/auth/` Directory — Consolidated — DONE
+
+`autopilot/auth/` contained only `api_security.py` (FastAPI `X-API-Key` header validation). This is **NOT** a duplicate of `core/tools/auth.py` (tool-level credential management) — they serve different architectural layers. The file was relocated to its natural home: `autopilot/api/security.py` (alongside `middleware.py`, `errors.py`). The orphan directory was deleted.
+
+**Also fixed**: API key comparison hardened from `!=` (timing-attack vulnerable) to `hmac.compare_digest()` (constant-time).
+
+> [!NOTE]
+> **COMPLETED** — `api_security.py` → `autopilot/api/security.py`. Import in `routes.py` updated. `autopilot/auth/` deleted. `hmac.compare_digest` applied. All tests pass.
+
+---
+
+### ✅ E7. Hardcoded `service_name` in Observability — DONE
+
+In [observability.py](file:///Users/camilopiedra/Development/Autopilot/autopilot/observability.py#L34), the default service name was hardcoded as `"bank-to-ynab"`:
+
+```python
+def setup_tracing(service_name: str = "bank-to-ynab", ...):
+```
+
+This was a **workflow-specific value** in a **platform-level module**. Should default to `"autopilot"` or read from `APP_NAME`.
+
+> [!NOTE]
+> **COMPLETED** — Default `service_name` now resolves from `K_SERVICE` env var (Cloud Run) or `APP_NAME.lower()`. Also added Cloud Trace exporter (A4) as 3-tier hierarchy: OTLP → Cloud Trace → Console. 6 unit tests added.
+
+---
+
+### ✅ E8. `autopilot/agents/pipeline_runner.py` — Consolidated as `ADKRunner` — DONE
+
+[pipeline_runner.py](file:///Users/camilopiedra/Development/Autopilot/autopilot/agents/pipeline_runner.py) was **NOT legacy** — it is the ADK Runtime Bridge, the ONLY way to execute native Google ADK agents (`LlmAgent`, `SequentialAgent`, etc.) via `google.adk.runners.Runner`. `ADKAgent.run()` depends on it. The problem was naming ("PipelineRunner" confused with `Pipeline`) and location (`agents/` instead of `core/`).
+
+**Resolution**: Renamed to `ADKRunner`, relocated to `autopilot/core/adk_runner.py`, deleted old file, updated all imports. Zero backward-compat code.
+
+> [!NOTE]
+> **COMPLETED** — `PipelineRunner` → `ADKRunner` in `autopilot/core/adk_runner.py`. All imports migrated, old file deleted, docstrings updated, ARCHITECTURE.md updated.
+
+---
+
+## 🔧 ADJUST — Upgrade to World-Class
+
+### A1. Session Service — Not Aligned with ADK's `SessionService`
+
+Google ADK's native `SessionService` uses `Session` objects with `id`, `app_name`, `user_id`, `state`, and `events`. Your `BaseSessionService` is a simpler KV store.
+
+**Current**: Raw KV with `get/set/delete/clear`
+**ADK Standard**: `create_session()`, `get_session()`, `list_sessions()` returning `Session` objects with full metadata
+
+**Recommendation**: Wrap your session service to be a **proper ADK `SessionService` adapter** so the platform can natively participate in ADK's session lifecycle, especially for A2A scenarios where sessions cross agent boundaries.
+
+---
+
+### A2. Memory Service — Should Use Vertex AI or `google.adk.memory`
+
+Your `InMemoryMemoryService` implements TF-IDF from scratch (pure Python, zero deps). While elegant, this is not production-grade for embeddings.
+
+**Current**: TF-IDF + cosine similarity (works for dev/test)
+**Edge Standard**: Google ADK supports `VertexAiRagMemoryService` for production
+
+**Recommendation**:
+
+- Keep `InMemoryMemoryService` for dev/test ✅
+- Replace `ChromaMemoryService` with `VertexAiRagMemoryService` for prod (aligns with Google Cloud ecosystem, zero infra to manage)
+- Or use `google.genai.embed_content()` for embeddings + Firestore for storage (fully serverless)
+
+---
+
+### A3. AgentBus — In-Memory Only, Dies on Scale-to-Zero
+
+The `AgentBus` is a pure in-memory singleton. When Cloud Run scales to zero and back, all subscriptions are lost. The bus history (ring buffer) is also lost.
+
+**Current**: In-memory `dict` with `deque` history
+**Edge Standard**: For truly stateless deployments, the bus should have a **durable backend**
+
+**Recommendation**: Implement `EventBusProtocol` (already referenced in your conversation history) with:
+
+1. `InMemoryAgentBus` — current implementation, for local dev
+2. `PubSubAgentBus` — backed by Google Cloud Pub/Sub for cross-instance fanout (native to your infra)
+
+This is critical for multi-workflow event routing across Cloud Run instances.
+
+---
+
+### ✅ A4. Observability — Cloud Trace Integration — DONE
+
+[observability.py](file:///Users/camilopiedra/Development/Autopilot/autopilot/observability.py) has OpenTelemetry + Prometheus, but the OTel exporter only supported OTLP or Console. On Cloud Run, you should use **Cloud Trace** directly.
+
+**Recommendation**: Add `opentelemetry-exporter-gcp-trace` as the production exporter:
+
+```python
+if os.getenv("K_SERVICE"):  # Running on Cloud Run
+    from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
+    exporter = CloudTraceSpanExporter()
+```
+
+> [!NOTE]
+> **COMPLETED** — Implemented as part of E7. 3-tier exporter hierarchy: OTLP → Cloud Trace → Console. Zero-config on Cloud Run.
+
+---
+
+### A5. Dockerfile — Multi-Stage Leak
+
+The Dockerfile does a proper multi-stage build BUT then:
+
+```dockerfile
+# Copy application code (.dockerignore excludes sensitive files)
+COPY . .
+```
+
+This copies **everything** into the runtime stage, including `tests/`, `docs/`, `.git/`, `venv/`, etc. The `.dockerignore` should handle this, but the safer edge pattern is to **explicitly COPY only what's needed**:
+
+```dockerfile
+COPY app.py ./
+COPY autopilot/ ./autopilot/
+COPY workflows/ ./workflows/
+```
+
+**Also**: `--workers 2` is hardcoded. Cloud Run should use `--workers 1` with `--threads` instead, since each instance has 1-2 vCPUs and multiple workers waste memory. Or use `WEB_CONCURRENCY` env var.
+
+---
+
+### A6. CORS Wildcard in Production
+
+```python
+cors_origins_str = os.getenv("API_CORS_ORIGINS", "*")
+```
+
+Default `"*"` in production is a security risk for a headless API that should only accept trusted sources (Pub/Sub, Cloud Scheduler, API keys).
+
+**Recommendation**: Default to empty or `""` — require explicit opt-in for CORS origins.
+
+---
+
+### A7. Version String — `"5.0.0"` But No Changelog
+
+The app claims `v5.0.0` but there's no `CHANGELOG.md` or release strategy. For a world-class platform, version should be auto-derived from git tags.
+
+**Recommendation**: Use `setuptools-scm` or `hatch-vcs` to auto-derive version from git tags. Eliminates manual `version.py` edits.
+
+---
+
+## ✨ ADD — World-Class Missing Capabilities
+
+### N1. A2A Protocol Server Implementation
+
+ARCHITECTURE.md references A2A (Agent-to-Agent) Protocol extensively via manifests and agent cards, but there's **no A2A server endpoint**. The platform can't be discovered or invoked by external agents.
+
+**What ADK Supports**: The Google ADK A2A specification defines:
+
+- `/.well-known/agent.json` — agent card discovery
+- `POST /a2a/tasks` — task submission
+- Task lifecycle: `submitted → working → completed`
+
+**Recommendation**: Implement a thin A2A server router that maps incoming A2A tasks to workflow executions. This makes Autopilot a **first-class citizen** in multi-agent ecosystems.
+
+---
+
+### N2. Structured Output Enforcement (Gemini Native)
+
+Gemini models natively support `response_schema` for structured JSON output. Your `ADKAgent` uses `output_key` + state-priority extraction, which is correct but could be **reinforced** with Gemini's native JSON mode.
+
+**Recommendation**: In `create_platform_agent`, when `output_schema` is provided (Pydantic model), auto-set `generate_content_config.response_schema` to the model's JSON schema. This eliminates all text-parsing fallback paths.
+
+```python
+agent = create_platform_agent(
+    name="parser",
+    instruction="...",
+    output_schema=ParsedEmail,  # NEW: auto-converted to response_schema
+)
+```
+
+---
+
+### N3. Gemini Context Caching (Cost Optimization)
+
+For agents that process long, repeated prompts (e.g., categorizer with 50+ categories), Gemini's **context caching** can reduce costs by 75%.
+
+**Recommendation**: Add `cached_content` support to `create_platform_agent`. Cache long system instructions + static tool schemas.
+
+---
+
+### N4. Firestore-Backed Session Service (Serverless)
+
+Your `RedisSessionService` requires a Redis instance. On Cloud Run (scale-to-zero), this means paying for an always-on Memorystore instance.
+
+**Recommendation**: Add `FirestoreSessionService` — native GCP, serverless, auto-scales, pay-per-use, perfect for scale-to-zero architectures. Aligns with the "edge, no infra" philosophy.
+
+---
+
+### N5. Artifact Store for Pipeline Runs
+
+Pipelines produce results but there's no structured way to store/retrieve artifacts (parsed emails, transaction JSONs, categorization results) across runs.
+
+**Recommendation**: Add `ArtifactStore` backed by Cloud Storage:
+
+```python
+await ctx.save_artifact("parsed_email.json", parsed_data)
+artifact = await ctx.load_artifact("parsed_email.json", run_id="prev-run-123")
+```
+
+This enables cross-run debugging, audit trails, and replay capabilities.
+
+---
+
+### N6. Platform-Level Rate Limiting on LLM Calls
+
+The `ToolCallbackManager` has `create_rate_limit_callback` for tools, but there's no equivalent for **LLM model calls**. Gemini has strict QPM limits.
+
+**Recommendation**: Add a `ModelRateLimiter` in `create_platform_agent` that applies token-bucket rate limiting per model, preventing 429 cascades across concurrent pipeline runs.
+
+---
+
+## Summary of Priorities
+
+### Immediate (Day 1) — Zero Cost, Massive Cleanup
+
+| #   | Action                         | Type    | Effort |
+| --- | ------------------------------ | ------- | ------ |
+| E1  | ~~Delete 12 root junk files~~  | ✅ DONE | —      |
+| E3  | ~~Delete `requirements.txt`~~  | ✅ DONE | —      |
+| E4  | ~~Secure credentials~~         | ✅ DONE | —      |
+| E7  | ~~Fix hardcoded service name~~ | ✅ DONE | —      |
+| A6  | Fix CORS default               | ADJUST  | 2 min  |
+
+### Short-Term (Week 1) — Architectural Hygiene
+
+| #   | Action                                   | Type    | Effort |
+| --- | ---------------------------------------- | ------- | ------ |
+| E2  | ~~Merge PipelineEventBus into AgentBus~~ | ✅ DONE | —      |
+| E5  | ~~Delete `autopilot/services/`~~         | ✅ DONE | —      |
+| E6  | ~~Consolidate auth~~                     | ✅ DONE | —      |
+| E8  | ~~Consolidate pipeline_runner~~          | ✅ DONE | —      |
+| A4  | ~~Add Cloud Trace exporter~~             | ✅ DONE | —      |
+| A5  | Fix Dockerfile COPY                      | ADJUST  | 30 min |
+
+### Medium-Term (Month 1) — Edge Differentiation
+
+| #   | Action                                  | Type   | Effort   |
+| --- | --------------------------------------- | ------ | -------- |
+| A1  | Align session with ADK SessionService   | ADJUST | 1-2 days |
+| A3  | Cloud-native AgentBus (Pub/Sub backend) | ADJUST | 2-3 days |
+| N1  | A2A Protocol server                     | ADD    | 2-3 days |
+| N2  | Structured output enforcement           | ADD    | 1 day    |
+| N4  | FirestoreSessionService                 | ADD    | 1-2 days |
+| N6  | Model rate limiter                      | ADD    | 1 day    |
+
+### Long-Term (Quarter) — World-Class Edge
+
+| #   | Action                     | Type   | Effort   |
+| --- | -------------------------- | ------ | -------- |
+| A2  | Vertex AI RAG Memory       | ADJUST | 2-3 days |
+| N3  | Gemini context caching     | ADD    | 1-2 days |
+| N5  | Artifact Store             | ADD    | 2-3 days |
+| A7  | Auto-version from git tags | ADJUST | 1h       |
