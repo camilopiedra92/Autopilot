@@ -480,7 +480,7 @@ class PubSubConnector(BaseConnector):
             }
             if page_token:
                 params["pageToken"] = page_token
-            
+
             # Optimization: Filter Gmail changes heavily by passing the target label.
             # Gmail API accepts exactly one labelId string. Since our use case
             # ensures we have at least one target label, pass the first one.
