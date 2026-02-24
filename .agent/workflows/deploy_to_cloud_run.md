@@ -63,8 +63,8 @@ gcloud run deploy bank-to-ynab \
   --max-instances=5 \
   --concurrency=80 \
   --timeout=120s \
-  --set-env-vars=PYTHONUNBUFFERED=1,GOOGLE_CLOUD_PROJECT=antigravity-bank-ynab,GCP_PUBSUB_TOPIC=projects/antigravity-bank-ynab/topics/gmail-notifications,EVENTBUS_BACKEND=pubsub,SESSION_BACKEND=firestore,MEMORY_BACKEND=firestore,ARTIFACT_BACKEND=gcs,ARTIFACT_GCS_BUCKET=antigravity-bank-ynab-artifacts,MODEL_RATE_LIMIT_QPM=1500,CONTEXT_CACHE_MIN_TOKENS=2048,CONTEXT_CACHE_TTL_SECONDS=1800,CONTEXT_CACHE_INTERVALS=10,CONTEXT_COMPRESSION_TRIGGER_TOKENS=100000,CONTEXT_COMPRESSION_TARGET_TOKENS=80000 \
-  --set-secrets=GOOGLE_API_KEY=google-api-key:latest,YNAB_ACCESS_TOKEN=ynab-access-token:latest,API_KEY_SECRET=api-key-secret:latest,TODOIST_API_TOKEN=todoist-api-token:latest,AIRTABLE_PERSONAL_ACCESS_TOKEN=airtable-personal-access-token:latest,TELEGRAM_BOT_TOKEN=telegram-bot-token:latest,/secrets/credentials/credentials.json=gmail-credentials:latest,/secrets/token/token.json=gmail-token:latest \
+  --set-env-vars=PYTHONUNBUFFERED=1,GOOGLE_CLOUD_PROJECT=antigravity-bank-ynab,GCP_PUBSUB_TOPIC=projects/antigravity-bank-ynab/topics/gmail-notifications,EVENTBUS_BACKEND=pubsub,SESSION_BACKEND=firestore,MEMORY_BACKEND=firestore,ARTIFACT_BACKEND=gcs,ARTIFACT_GCS_BUCKET=antigravity-bank-ynab-artifacts,MODEL_RATE_LIMIT_QPM=1500,CONTEXT_CACHE_MIN_TOKENS=2048,CONTEXT_CACHE_TTL_SECONDS=1800,CONTEXT_CACHE_INTERVALS=10,CONTEXT_COMPRESSION_TRIGGER_TOKENS=100000,CONTEXT_COMPRESSION_TARGET_TOKENS=80000,HASS_URL=https://home-assistant.camilo-systems.com \
+  --set-secrets=GOOGLE_API_KEY=google-api-key:latest,YNAB_ACCESS_TOKEN=ynab-access-token:latest,API_KEY_SECRET=api-key-secret:latest,TODOIST_API_TOKEN=todoist-api-token:latest,AIRTABLE_PERSONAL_ACCESS_TOKEN=airtable-personal-access-token:latest,TELEGRAM_BOT_TOKEN=telegram-bot-token:latest,HASS_TOKEN=hass-token:latest,CF_ACCESS_CLIENT_ID=cf-access-client-id:latest,CF_ACCESS_CLIENT_SECRET=cf-access-client-secret:latest,/secrets/credentials/credentials.json=gmail-credentials:latest,/secrets/token/token.json=gmail-token:latest \
   --cpu-boost
 ```
 

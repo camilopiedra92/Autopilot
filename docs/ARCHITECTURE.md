@@ -308,8 +308,9 @@ The platform provides typed, observable primitives for building agentic workflow
 | `ToolAuthManager`         | Credential store: resolution (cache→state→env), request/provide flows                                                       |
 | `LongRunningTool`         | Wrapper for async operations → ADK `LongRunningFunctionTool`                                                                |
 | `OperationTracker`        | Lifecycle tracking for long-running tool operations                                                                         |
-| `MCPBridge`               | Platform wrapper for connecting to external MCP servers                                                                     |
-| `MCPRegistry`             | Multi-MCP-server lifecycle management                                                                                       |
+| `MCPBridge`               | Platform wrapper for connecting to external MCP servers (HTTP + SSE + Stdio tri-mode)                                       |
+| `MCPRegistry`             | Multi-MCP-server lifecycle management with env-var auto-discovery                                                           |
+| `get_mcp_registry()`      | Process-global singleton — auto-registers MCP servers from env vars (same pattern as connectors)                            |
 | `EventBus`                | Unified pub/sub message bus with middleware chain and replay (A2A)                                                          |
 | `AgentMessage`            | Pydantic envelope: topic, sender, payload, correlation_id                                                                   |
 | `Subscription`            | Opaque handle for unsubscribing from the bus                                                                                |
@@ -938,35 +939,109 @@ agent = create_platform_agent(
 )
 ```
 
-#### Connecting MCP servers
+#### Connecting MCP Servers
+
+`MCPBridge` supports three connection modes, aligned with ADK's `McpToolset`:
+
+| Mode      | ADK Class                        | Use Case                               | Example                |
+| --------- | -------------------------------- | -------------------------------------- | ---------------------- |
+| **HTTP**  | `StreamableHTTPConnectionParams` | Remote MCP servers (modern, default)   | Home Assistant         |
+| **SSE**   | `SseConnectionParams`            | Remote MCP servers (legacy SSE stream) | GitHub, older servers  |
+| **Stdio** | `StdioConnectionParams`          | Local subprocess servers               | Brave Search via `npx` |
+
+##### Auto-Registration from Environment Variables
+
+MCP servers are auto-discovered at startup via `get_mcp_registry()`, following the
+same singleton + auto-register pattern as connectors:
+
+| Env Vars                                          | Registered Server       | Transport |
+| ------------------------------------------------- | ----------------------- | --------- |
+| `HASS_URL` + `HASS_TOKEN`                         | `homeassistant`         | HTTP      |
+| `CF_ACCESS_CLIENT_ID` + `CF_ACCESS_CLIENT_SECRET` | _(added to HA headers)_ | —         |
+
+Workflows declare MCP servers **by name only** — the platform resolves everything:
 
 ```python
-from autopilot.core.tools import MCPBridge, MCPRegistry
+# Workflow — zero platform imports, fully declarative
+def create_assistant(**kwargs):
+    return create_platform_agent(
+        name="assistant",
+        instruction="...",
+        tools=["todoist.create_task_simple", "ynab.get_transactions"],
+        mcp_servers=["homeassistant"],  # Platform auto-resolves from MCPRegistry
+        **kwargs,
+    )
+```
 
-mcp = MCPRegistry()
-mcp.register(MCPBridge(
+##### Manual Registration
+
+For custom MCP servers not covered by auto-registration:
+
+```python
+from autopilot.core.tools import MCPBridge, get_mcp_registry
+
+registry = get_mcp_registry()
+
+# Stdio mode — local MCP server (child process)
+registry.register(MCPBridge(
     server_name="brave_search",
     command="npx",
     args=["-y", "@anthropic/mcp-brave-search"],
     env={"BRAVE_API_KEY": "..."},
 ))
 
-# Add MCP toolsets to an agent
-agent = create_platform_agent(
-    name="research_agent",
-    instruction="...",
-    tools=mcp.get_all_toolsets(),
+# Streamable HTTP mode — remote MCP server (default for url)
+registry.register(MCPBridge(
+    server_name="custom_api",
+    url="https://api.example.com/mcp",
+    headers={"Authorization": "Bearer TOKEN"},
+))
+
+# SSE mode — legacy SSE MCP server
+registry.register(MCPBridge(
+    server_name="legacy_server",
+    url="https://mcp.example.com/sse",
+    transport="sse",  # Explicit SSE (default is "http")
+))
+```
+
+**ADK best practices** — `MCPBridge` supports `tool_filter` and `tool_name_prefix` per the ADK docs:
+
+- `tool_filter`: Restrict which MCP tools are exposed to the agent (whitelist)
+- `tool_name_prefix`: Namespace tool names to prevent collisions across multiple MCP servers
+
+```python
+# Production — only expose specific tools with a prefix
+ha_bridge = MCPBridge(
+    server_name="homeassistant",
+    url="https://ha.example.com/api/mcp",
+    headers={"Authorization": "Bearer TOKEN"},
+    tool_filter=["entity_action", "call_service"],
+    tool_name_prefix="ha_",
 )
 ```
 
-| Component                     | Purpose                                                         |
-| ----------------------------- | --------------------------------------------------------------- |
-| `@tool` decorator             | Register a function + extract metadata at import time           |
-| `ToolRegistry.to_adk_tools()` | Batch-convert to ADK `FunctionTool` / `LongRunningFunctionTool` |
-| `ToolRegistry.by_tag(tag)`    | Filter tools by tag (e.g. `"finance"`, `"search"`)              |
-| `expose_connector_tools()`    | Auto-expose connector `.client` methods as namespaced tools     |
-| `MCPBridge`                   | Config + factory for a single MCP server connection             |
-| `MCPRegistry`                 | Manages multiple MCP bridges and batch-retrieves toolsets       |
+##### Cloudflare Tunnel Support
+
+For Home Assistant behind a Cloudflare Tunnel, set `CF_ACCESS_CLIENT_ID` and
+`CF_ACCESS_CLIENT_SECRET`. The auto-registration merges them into the request headers:
+
+```
+HASS_URL=https://home-assistant.example.com
+HASS_TOKEN=<long-lived-access-token>
+CF_ACCESS_CLIENT_ID=<client-id>.access
+CF_ACCESS_CLIENT_SECRET=<client-secret>
+```
+
+| Component                     | Purpose                                                                  |
+| ----------------------------- | ------------------------------------------------------------------------ |
+| `@tool` decorator             | Register a function + extract metadata at import time                    |
+| `ToolRegistry.to_adk_tools()` | Batch-convert to ADK `FunctionTool` / `LongRunningFunctionTool`          |
+| `ToolRegistry.by_tag(tag)`    | Filter tools by tag (e.g. `"finance"`, `"search"`)                       |
+| `expose_connector_tools()`    | Auto-expose connector `.client` methods as namespaced tools              |
+| `MCPBridge`                   | Config + factory for a single MCP server connection (HTTP + SSE + Stdio) |
+| `MCPRegistry`                 | Manages multiple MCP bridges and batch-retrieves toolsets                |
+| `get_mcp_registry()`          | Process-global singleton with env-var auto-discovery                     |
 
 #### ToolContext Integration (Phase 7)
 
@@ -1512,7 +1587,7 @@ autopilot/                        # Core platform logic
 │   └── tools/                    # Tool Ecosystem (Phase 4 + Phase 7)
 │       ├── registry.py           # ToolRegistry, @tool decorator, ToolInfo (requires_context)
 │       ├── connector_bridge.py   # Auto-expose connector methods as tools
-│       ├── mcp.py                # MCPBridge, MCPRegistry
+│       ├── mcp.py                # MCPBridge, MCPRegistry, get_mcp_registry
 │       ├── callbacks.py          # Phase 7 — ToolCallbackManager, before/after hooks
 │       ├── auth.py               # Phase 7 — ToolAuthConfig, ToolAuthManager, credential flows
 │       └── long_running.py       # Phase 7 — LongRunningTool, OperationTracker

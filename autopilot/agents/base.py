@@ -124,6 +124,7 @@ def create_platform_agent(
     fallback_model: str | None = None,
     description: str | None = None,
     tools: list[Callable | Any] | None = None,
+    mcp_servers: list[str] | None = None,
     output_key: str | None = None,
     output_schema: type | None = None,
     temperature: float | None = None,
@@ -141,6 +142,10 @@ def create_platform_agent(
         fallback_model: Optional fallback model if the primary fails (e.g., gemini-2.0-pro-exp).
         description: Description of what the agent does.
         tools: List of tools (functions or Tool instances) available to the agent.
+        mcp_servers: Optional list of MCP server names to include (e.g.
+            ``["homeassistant"]``). Resolved from the platform ``MCPRegistry``.
+            Keeps MCP infrastructure at the platform level — workflows only
+            declare which servers they need.
         output_key: Session state key to write the result to.
         output_schema: Pydantic model for structured output. When set, ADK
             activates Gemini native JSON mode (``response_schema`` +
@@ -180,6 +185,15 @@ def create_platform_agent(
             resolved_tools.extend(resolved_from_strings)
 
         resolved_tools.extend(other_tools)
+
+    # Auto-resolve MCP servers from the platform registry
+    if mcp_servers:
+        from autopilot.core.tools.mcp import get_mcp_registry
+
+        mcp_registry = get_mcp_registry()
+        for server_name in mcp_servers:
+            if server_name in mcp_registry:
+                resolved_tools.append(mcp_registry.get_toolset(server_name))
 
     # Inject ADK-native HttpRetryOptions for transient 429s (Layer 1)
     if gen_config is None:

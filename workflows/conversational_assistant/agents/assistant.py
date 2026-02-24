@@ -2,13 +2,15 @@
 Personal Assistant Agent Factory — ReAct agent for natural language commands.
 
 Creates an autonomous agent that understands natural language in Spanish and
-executes actions across Todoist, YNAB, and Telegram connectors.
+executes actions across Todoist, YNAB, Telegram, and Home Assistant.
 
-Tools (auto-resolved from connectors):
+Tools (auto-resolved from connectors + MCP):
   - telegram.send_message_string
   - todoist.get_projects_string, get_active_tasks_string, create_task_simple, close_task, update_task
   - ynab: full API — accounts, categories, transactions, scheduled transactions,
     payees, budget months, account management, and user info
+  - homeassistant: MCP-based — smart home control (lights, switches, climate,
+    sensors, automations, scenes) via Home Assistant's MCP server
 """
 
 from typing import Any
@@ -42,6 +44,13 @@ CAPACIDADES DISPONIBLES:
 
 3. **Comunicación (Telegram)**:
    - Siempre responde al usuario por Telegram
+
+4. **Casa Inteligente (Home Assistant)**:
+   - Controlar luces, switches, ventiladores y otros dispositivos
+   - Consultar estados de sensores (temperatura, humedad, movimiento)
+   - Activar/desactivar escenas y automaciones
+   - Controlar el clima (AC, calefacción)
+   - Consultar el estado general de la casa
 
 REGLAS ESTRICTAS:
 
@@ -97,6 +106,18 @@ Usuario: "¿Cuánto llevo gastado este mes?"
 Usuario: "Crea un pago recurrente de Netflix por $45.000 mensual"
 → Obtener cuentas → crear scheduled transaction
 → Responder: "Creé el pago recurrente de Netflix por $45.000/mes ✓"
+
+Usuario: "Apaga las luces de la sala"
+→ Usar herramientas de Home Assistant para apagar light.sala
+→ Responder: "Listo, apagué las luces de la sala ✓"
+
+Usuario: "¿Qué temperatura hay en la casa?"
+→ Consultar sensores de temperatura en Home Assistant
+→ Responder: "La casa está a 23°C, humedad al 65%"
+
+Usuario: "Activa la escena de película"
+→ Activar scene.pelicula en Home Assistant
+→ Responder: "Activé la escena de película ✓"
 """
 
 
@@ -104,12 +125,13 @@ def create_assistant(**kwargs: Any) -> Any:
     """
     Creates the Personal Assistant agent using the platform factory.
 
-    ReAct-compatible agent with tools from Todoist, YNAB, and Telegram connectors.
-    All tools are auto-resolved from the connector bridge — no manual registration.
+    ReAct-compatible agent with tools from Todoist, YNAB, Telegram,
+    and Home Assistant (MCP). Connector tools are auto-resolved by name;
+    MCP servers are auto-resolved from the platform MCPRegistry.
     """
     return create_platform_agent(
         name="assistant",
-        description="Personal assistant that understands natural language and executes actions across Todoist, YNAB, and Telegram.",
+        description="Personal assistant that understands natural language and executes actions across Todoist, YNAB, Telegram, and Home Assistant.",
         instruction=ASSISTANT_INSTRUCTION,
         tools=[
             # ── Telegram (respond to user) ──
@@ -152,5 +174,7 @@ def create_assistant(**kwargs: Any) -> Any:
             # User
             "ynab.get_user",
         ],
+        # ── MCP Servers (platform-resolved) ──
+        mcp_servers=["homeassistant"],
         **kwargs,
     )

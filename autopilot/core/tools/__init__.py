@@ -23,7 +23,7 @@ from autopilot.core.tools.connector_bridge import (
     expose_connector_tools,
     register_all_connector_tools,
 )
-from autopilot.core.tools.mcp import MCPBridge, MCPRegistry
+from autopilot.core.tools.mcp import MCPBridge, MCPRegistry, get_mcp_registry
 from autopilot.core.tools.callbacks import (
     ToolCallbackManager,
     get_callback_manager,
@@ -63,6 +63,7 @@ __all__ = [
     # MCP
     "MCPBridge",
     "MCPRegistry",
+    "get_mcp_registry",
     # Callbacks (V3 Phase 7)
     "ToolCallbackManager",
     "get_callback_manager",
