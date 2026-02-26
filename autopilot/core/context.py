@@ -16,8 +16,6 @@ Every agent in the platform receives an ``AgentContext`` that provides:
   - Compatible with asyncio, zero thread-local hacks.
 """
 
-from __future__ import annotations
-
 import time
 import structlog
 from dataclasses import dataclass, field
@@ -190,7 +188,7 @@ class AgentContext:
     async def recall(
         self,
         query: str,
-    ) -> SearchMemoryResponse:
+    ) -> "SearchMemoryResponse":
         """Search long-term memory. Returns ADK SearchMemoryResponse."""
         return await self.memory.search_memory(
             app_name=self.pipeline_name or "autopilot",
@@ -285,6 +283,27 @@ class AgentContext:
 
         return get_cost_tracker()
 
+    # ── Workflow State (cross-run KV) ─────────────────────────────────
+
+    @property
+    def workflow_state(self):
+        """Cross-run KV store scoped to this workflow.
+
+        Returns a ``WorkflowStateService`` bound to the current pipeline
+        name and sharing the same ``ArtifactService`` backend.
+
+        Usage::
+
+            data = await ctx.workflow_state.get("trade_stats")
+            await ctx.workflow_state.put("trade_stats", {"wins": 20})
+        """
+        from autopilot.core.workflow_state import WorkflowStateService
+
+        return WorkflowStateService(
+            self.pipeline_name or "autopilot",
+            artifact_service=self.artifact_service,
+        )
+
     # ── Tool Registry Access ─────────────────────────────────────────
 
     @property
@@ -296,7 +315,7 @@ class AgentContext:
 
     # ── Child Context ────────────────────────────────────────────────
 
-    def for_step(self, step_name: str) -> AgentContext:
+    def for_step(self, step_name: str) -> "AgentContext":
         """
         Create a child context for a specific pipeline step.
 

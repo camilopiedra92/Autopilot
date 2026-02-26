@@ -25,8 +25,6 @@ Backend selection follows 12-Factor config (``SESSION_BACKEND`` env var)::
     service = create_session_service("firestore")  # explicit
 """
 
-from __future__ import annotations
-
 import logging
 import time
 from typing import Any, Optional
@@ -124,7 +122,7 @@ class FirestoreSessionService(BaseSessionService):
         self.root_collection = root_collection
 
     @classmethod
-    def from_env(cls) -> FirestoreSessionService:
+    def from_env(cls) -> "FirestoreSessionService":
         """Create from environment — zero-config on Cloud Run.
 
         Reads ``GOOGLE_CLOUD_PROJECT`` (auto-set on Cloud Run).
@@ -427,7 +425,7 @@ class FirestoreSessionService(BaseSessionService):
         """Close the Firestore client."""
         self.client.close()
 
-    async def __aenter__(self) -> FirestoreSessionService:
+    async def __aenter__(self) -> "FirestoreSessionService":
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:

@@ -11,8 +11,6 @@ Usage:
     emails = gmail.get_unread_emails()
 """
 
-from __future__ import annotations
-
 import os
 import base64
 import re

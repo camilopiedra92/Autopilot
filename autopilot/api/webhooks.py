@@ -7,8 +7,6 @@ Handles:
   - Telegram: POST /telegram/webhook → publishes telegram.message_received to AgentBus
 """
 
-from __future__ import annotations
-
 import os
 import structlog
 from fastapi import APIRouter, HTTPException, Request
@@ -30,7 +28,11 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 # ── Generic Webhook ──────────────────────────────────────────────────
 
 
-@router.post("/api/webhook/{webhook_path:path}")
+@router.post(
+    "/api/webhook/{webhook_path:path}",
+    tags=["Webhooks"],
+    summary="Route a generic webhook",
+)
 async def generic_webhook(webhook_path: str, request: Request):
     """
     Route a webhook request to the workflow that handles the given path.
@@ -75,7 +77,9 @@ async def generic_webhook(webhook_path: str, request: Request):
 # ── Gmail Pub/Sub Webhook (Event-Driven Adapter) ────────────────────
 
 
-@router.post("/gmail/webhook")
+@router.post(
+    "/gmail/webhook", tags=["Webhooks"], summary="Gmail Pub/Sub push notification"
+)
 async def gmail_push_webhook(request: Request):
     """
     Handle Google Cloud Pub/Sub push notifications for Gmail.
@@ -146,7 +150,7 @@ async def gmail_push_webhook(request: Request):
 # ── Telegram Webhook (Event-Driven Adapter) ─────────────────────────
 
 
-@router.post("/telegram/webhook")
+@router.post("/telegram/webhook", tags=["Webhooks"], summary="Telegram Bot API webhook")
 async def telegram_webhook(request: Request):
     """
     Handle incoming Telegram Bot API webhook updates.

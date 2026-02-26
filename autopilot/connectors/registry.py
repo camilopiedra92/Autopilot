@@ -25,8 +25,6 @@ Usage:
     # {"gmail": True, "ynab": True, "pubsub": False}
 """
 
-from __future__ import annotations
-
 import structlog
 
 from autopilot.connectors.base_connector import BaseConnector, ConnectorInfo

@@ -1,0 +1,44 @@
+# Pipeline definition — declarative execution via DSL
+# Loaded automatically by BaseWorkflow.execute() if present.
+#
+# Fully deterministic pipeline: 6 code steps, 0 LLM calls
+#   1. resolve_outcomes     → code (~0.5s, $0) — resolve pending trade outcomes
+#   2. gather_market_data   → code (~1.5s, $0) — multi-market scan + 14 sources
+#   3. score_trade          → code (instant, $0) — 3-layer Signal Confluence Engine
+#   4. risk_gate            → code (instant, $0) — 12 hard risk rules
+#   5. execute_trade        → code (~0.5s, $0) — CLOB order + remember outcome
+#   6. log_performance      → code (instant, $0) — structured metrics dashboard
+
+name: polymarket_btc
+strategy: sequential
+
+steps:
+  - name: resolve_outcomes
+    type: function
+    ref: workflows.polymarket_btc.steps.resolve_outcomes_step
+    description: "Resolve pending trade outcomes via Polymarket API (code)"
+
+  - name: gather_market_data
+    type: function
+    ref: workflows.polymarket_btc.steps.gather_market_data
+    description: "Multi-market scan + liquidity filter + 14 signal sources (code)"
+
+  - name: score_trade
+    type: function
+    ref: workflows.polymarket_btc.steps.score_trade
+    description: "3-layer Signal Confluence Engine: Binance composite + Polymarket flow → confluence cross-validation → Bayesian sizing (code)"
+
+  - name: risk_gate
+    type: function
+    ref: workflows.polymarket_btc.steps.risk_gate
+    description: "Enforce 12 hard risk rules, approve or veto (code)"
+
+  - name: execute_trade
+    type: function
+    ref: workflows.polymarket_btc.steps.execute_trade_step
+    description: "Execute approved trade on Polymarket CLOB with drift guard (code)"
+
+  - name: log_performance
+    type: function
+    ref: workflows.polymarket_btc.steps.log_performance
+    description: "Emit structured performance metrics for monitoring (code)"

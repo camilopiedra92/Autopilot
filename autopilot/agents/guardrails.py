@@ -26,8 +26,6 @@ Usage:
     )
 """
 
-from __future__ import annotations
-
 import re
 import structlog
 from typing import Optional, Callable

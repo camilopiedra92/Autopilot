@@ -10,8 +10,6 @@ describing WHAT the agent does (metadata, I/O, tools, guardrails)
 while the .py defines HOW it works.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import structlog

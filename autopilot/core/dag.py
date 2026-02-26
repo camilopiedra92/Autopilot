@@ -27,8 +27,6 @@ The diamond pattern above executes as three layers:
   Layer 2: [merge]          — waits for both
 """
 
-from __future__ import annotations
-
 import asyncio
 import time
 from collections import defaultdict, deque
@@ -288,7 +286,7 @@ class DAGBuilder:
         agent: StepLike,
         *,
         dependencies: list[str] | None = None,
-    ) -> DAGBuilder:
+    ) -> "DAGBuilder":
         """
         Register a node in the DAG.
 

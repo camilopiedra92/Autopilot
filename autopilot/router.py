@@ -10,8 +10,6 @@ Note: Gmail push routing is handled event-driven via the AgentBus
 (``email.received`` topic). See ``autopilot/api/webhooks.py``.
 """
 
-from __future__ import annotations
-
 import structlog
 from typing import Any
 

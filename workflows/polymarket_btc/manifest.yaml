@@ -1,0 +1,74 @@
+name: polymarket_btc
+display_name: "Polymarket BTC Trader 🔮📈"
+description: "Agentic BTC prediction market trader with momentum + TA + order book edge"
+version: "1.0.0"
+icon: "🔮"
+color: "#6C5CE7"
+memory: true
+
+triggers:
+  - type: scheduled
+    schedule: "* * * * *"
+    description: "Runs every minute — bot decides optimal timing within 5-min window"
+  - type: manual
+    description: "On-demand market analysis or single trade"
+
+settings:
+  - key: polymarket_private_key
+    type: secret
+    required: true
+    description: "Polygon wallet private key for trading"
+  - key: polymarket_proxy_wallet
+    type: secret
+    required: true
+    description: "Polymarket proxy wallet (funder) address"
+  - key: max_trade_size_usd
+    type: number
+    required: false
+    default: 20
+    description: "Maximum USDC per trade"
+  - key: daily_loss_cap_usd
+    type: number
+    required: false
+    default: 100
+    description: "Maximum daily loss before pausing"
+  - key: min_conviction_score
+    type: number
+    required: false
+    default: 65
+    description: "Minimum conviction score to trigger a trade (0-100)"
+  - key: market_durations
+    type: string
+    required: false
+    default: "5m"
+    description: "Comma-separated market durations to trade: 5m,15m,1h"
+  - key: dry_run
+    type: boolean
+    required: false
+    default: true
+    description: "Paper trading mode — simulate orders without placing them"
+  - key: bankroll_usdc
+    type: number
+    required: false
+    default: 200
+    description: "Total USDC bankroll for Kelly position sizing. Kelly fraction × bankroll = base trade size."
+  - key: kelly_fraction_cap
+    type: number
+    required: false
+    default: 0.25
+    description: "Maximum Kelly fraction (0.0–1.0). 0.25 = Quarter-Kelly (recommended), 0.5 = Half-Kelly (aggressive)"
+  - key: max_exposure_per_window
+    type: number
+    required: false
+    default: 50
+    description: "Maximum total USDC exposure per prediction market window (Rule 10 cap). Allows up to N dollars across all scale-in entries within the same condition."
+
+agents:
+  cards_dir: agents/
+
+tags:
+  - predictions
+  - trading
+  - crypto
+  - btc
+  - polymarket

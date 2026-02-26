@@ -5,8 +5,6 @@ Allows a router agent to analyze an initial input and dynamically select the
 best-fit sub-workflow (Pipeline, DAG, or ReAct loop) to handle the request.
 """
 
-from __future__ import annotations
-
 import time
 from typing import Any
 

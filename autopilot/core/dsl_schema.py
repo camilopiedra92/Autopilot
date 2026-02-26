@@ -22,8 +22,6 @@ Usage (typically called by DSLLoader, not directly)::
     definition = DSLWorkflowDef(**raw)
 """
 
-from __future__ import annotations
-
 import enum
 from typing import Any
 
@@ -91,7 +89,7 @@ class DSLStepDef(BaseModel):
     description: str = ""
 
     # Loop-specific
-    body: DSLStepDef | None = Field(
+    body: "DSLStepDef | None" = Field(
         default=None,
         description="Inner step to loop (only for type=loop).",
     )
@@ -110,10 +108,13 @@ class DSLStepDef(BaseModel):
     )
 
     # Parallel / Sequential children
-    children: list[DSLStepDef] | None = Field(
+    children: "list[DSLStepDef] | None" = Field(
         default=None,
         description="Child steps (for type=parallel or type=sequential).",
     )
+
+
+DSLStepDef.model_rebuild()
 
 
 class DSLNodeDef(BaseModel):

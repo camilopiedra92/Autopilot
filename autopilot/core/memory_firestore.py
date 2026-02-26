@@ -21,8 +21,6 @@ Configuration env vars:
     MEMORY_SEARCH_LIMIT             — Max search results (default: 20)
 """
 
-from __future__ import annotations
-
 import logging
 import os
 from collections.abc import Sequence
@@ -96,7 +94,7 @@ class FirestoreVectorMemoryService(BaseMemoryService):
         self.search_limit = search_limit
 
     @classmethod
-    def from_env(cls) -> FirestoreVectorMemoryService:
+    def from_env(cls) -> "FirestoreVectorMemoryService":
         """Create from environment — zero-config on Cloud Run.
 
         Reads:
@@ -311,7 +309,7 @@ class FirestoreVectorMemoryService(BaseMemoryService):
         """Close the Firestore client."""
         self.db.close()
 
-    async def __aenter__(self) -> FirestoreVectorMemoryService:
+    async def __aenter__(self) -> "FirestoreVectorMemoryService":
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:

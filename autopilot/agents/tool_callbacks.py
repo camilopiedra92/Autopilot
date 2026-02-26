@@ -11,8 +11,6 @@ These complement the model-level callbacks (before_model_logger, after_model_log
 to give **complete observability** across LLM calls AND tool/API calls.
 """
 
-from __future__ import annotations
-
 import time
 import structlog
 from typing import Any, Optional

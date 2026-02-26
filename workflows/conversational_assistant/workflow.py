@@ -8,8 +8,6 @@ responds within the same ADK session (multi-turn conversations).
 manifest.yaml and agent cards are auto-loaded by BaseWorkflow.
 """
 
-from __future__ import annotations
-
 import structlog
 
 from autopilot.base_workflow import BaseWorkflow

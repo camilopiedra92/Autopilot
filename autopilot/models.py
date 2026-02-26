@@ -11,8 +11,6 @@ Defines the core data structures used across all workflows:
   - AgentCard: Declarative agent metadata (YAML-driven)
 """
 
-from __future__ import annotations
-
 import enum
 from datetime import datetime
 from typing import Any
@@ -114,6 +112,8 @@ class RunStatus(str, enum.Enum):
     SUCCESS = "success"
     FAILED = "failed"
     SKIPPED = "skipped"
+    PAUSED = "paused"  # HITL — waiting for human intervention
+    CANCELLED = "cancelled"  # Manually cancelled via API
 
 
 class WorkflowResult(BaseModel):

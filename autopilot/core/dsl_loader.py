@@ -30,8 +30,6 @@ Design:
   - Every resolution failure gives a clear, actionable error message.
 """
 
-from __future__ import annotations
-
 import importlib
 from pathlib import Path
 from typing import Any, Callable, Union

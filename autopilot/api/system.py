@@ -20,7 +20,12 @@ class HealthResponse(BaseModel):
     workflow_details: dict
 
 
-@router.get("/health", response_model=HealthResponse)
+@router.get(
+    "/health",
+    response_model=HealthResponse,
+    tags=["System"],
+    summary="Platform health check",
+)
 async def health():
     registry = get_registry()
     workflows = registry.list_all()
@@ -45,12 +50,12 @@ async def health():
     )
 
 
-@router.get("/")
+@router.get("/", tags=["System"], summary="Platform info")
 async def root():
     return {"api": "AutoPilot Headless API", "version": VERSION, "status": "online"}
 
 
-@router.get("/metrics")
+@router.get("/metrics", tags=["System"], summary="Prometheus metrics")
 async def metrics():
     return Response(content=get_metrics(), media_type=get_metrics_content_type())
 
@@ -68,7 +73,7 @@ def _get_pubsub_connector():
         return None
 
 
-@router.get("/gmail/watch/status")
+@router.get("/gmail/watch/status", tags=["Gmail Watch"], summary="Gmail watch status")
 async def gmail_watch_status():
     """Diagnostic endpoint: returns the current Gmail watch state."""
     pubsub = _get_pubsub_connector()
@@ -77,7 +82,9 @@ async def gmail_watch_status():
     return pubsub.watch_status
 
 
-@router.post("/gmail/watch/renew")
+@router.post(
+    "/gmail/watch/renew", tags=["Gmail Watch"], summary="Force renew Gmail watch"
+)
 async def gmail_watch_renew():
     """Force re-register the Gmail watch.
 
@@ -96,7 +103,9 @@ async def gmail_watch_renew():
         return {"renewed": False, "error": str(e)}
 
 
-@router.post("/gmail/watch/stop")
+@router.post(
+    "/gmail/watch/stop", tags=["Gmail Watch"], summary="Force stop Gmail watch"
+)
 async def gmail_watch_stop():
     """Force stop the Gmail watch.
 

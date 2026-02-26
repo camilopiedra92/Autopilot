@@ -15,8 +15,6 @@ Usage:
     service = create_memory_service()  # Reads MEMORY_BACKEND env var
 """
 
-from __future__ import annotations
-
 import os
 
 import structlog

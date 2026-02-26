@@ -9,8 +9,6 @@ ADK `LlmAgent`s with standard platform configuration:
   - Dual-layer rate limiting (ADK HttpRetryOptions + proactive token-bucket)
 """
 
-from __future__ import annotations
-
 import os
 from typing import Any, Callable
 
@@ -255,9 +253,14 @@ def create_platform_agent(
             after_tool_logger, user_after_tool
         )
 
-    # When output_schema is set, ADK activates Gemini native JSON mode and
-    # disables tools. We also disable agent transfers for full isolation —
-    # schema-constrained agents should ONLY produce structured output.
+    # When output_schema is set, ADK activates Gemini native JSON mode.
+    # On older models (< Gemini 3), this also disables tools.
+    # Gemini 3+ models support tools + output_schema simultaneously.
+    #
+    # We default to disabling agent transfers for full isolation, but
+    # sub-agents within a SequentialAgent should explicitly override
+    # these to False so they can share session state with peers:
+    #   disallow_transfer_to_parent=False, disallow_transfer_to_peers=False
     if output_schema is not None:
         kwargs.setdefault("disallow_transfer_to_parent", True)
         kwargs.setdefault("disallow_transfer_to_peers", True)

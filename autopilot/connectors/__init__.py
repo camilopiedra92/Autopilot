@@ -27,6 +27,10 @@ from autopilot.connectors.telegram_connector import (
     TelegramConnector,
     AsyncTelegramClient,
 )
+from autopilot.connectors.polymarket_connector import (
+    PolymarketConnector,
+    AsyncPolymarketClient,
+)
 
 __all__ = [
     "BaseConnector",
@@ -43,4 +47,6 @@ __all__ = [
     "AsyncAirtableClient",
     "TelegramConnector",
     "AsyncTelegramClient",
+    "PolymarketConnector",
+    "AsyncPolymarketClient",
 ]

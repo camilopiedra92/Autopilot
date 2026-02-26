@@ -1,0 +1,8 @@
+name: strategist
+display_name: "Trading Strategist 🧠"
+model: gemini-3-flash-preview
+description: "Deep analysis of market data, direction selection with Kelly criterion sizing."
+
+tools: []
+
+output_key: trade_proposal

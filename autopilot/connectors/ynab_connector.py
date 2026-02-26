@@ -13,8 +13,6 @@ Usage:
     accounts = await ynab.client.get_all_accounts_string()
 """
 
-from __future__ import annotations
-
 import os
 import time
 import structlog

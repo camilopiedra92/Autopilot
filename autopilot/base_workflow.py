@@ -22,8 +22,6 @@ Usage:
     # Or define pipeline.yaml and let BaseWorkflow auto-run it.
 """
 
-from __future__ import annotations
-
 import inspect
 import time
 import structlog
@@ -224,12 +222,112 @@ class BaseWorkflow:
     # ── Optional Lifecycle Hooks ──────────────────────────────────────
 
     async def setup(self) -> None:
-        """Called once when the workflow is registered. Override for initialization."""
-        pass
+        """Lifecycle hook — called once after registration.
+
+        Hydrates run stats from durable backend on cold start.
+        Registers EventBus subscribers for HITL resume and manual trigger.
+        Override in subclasses for workflow-specific setup (call super!).
+        """
+        try:
+            from autopilot.core.run_log import get_run_log_service
+
+            svc = get_run_log_service()
+            stats = await svc.get_stats(self.manifest.name)
+            self._total_runs = stats.get("total", 0)
+            self._successful_runs = stats.get("successful", 0)
+
+            # Load most recent run for last_run property (uses efficient get_latest_run)
+            latest = await svc.get_latest_run(self.manifest.name)
+            if latest:
+                self._runs = [latest]
+            logger.debug(
+                "run_log_hydrated",
+                workflow=self.manifest.name,
+                total_runs=self._total_runs,
+                successful_runs=self._successful_runs,
+            )
+        except Exception:
+            logger.debug("run_log_hydration_skipped", workflow=self.manifest.name)
+
+        # Register EventBus subscribers for API HITL & triggers
+        try:
+            from autopilot.core.subscribers import get_subscriber_registry
+
+            registry = get_subscriber_registry()
+            registry.add(
+                "api.hitl_resumed",
+                self._on_hitl_resumed,
+                source=f"BaseWorkflow:{self.manifest.name}",
+            )
+            registry.add(
+                "api.workflow_triggered",
+                self._on_manual_trigger,
+                source=f"BaseWorkflow:{self.manifest.name}",
+            )
+            logger.debug(
+                "api_subscribers_registered",
+                workflow=self.manifest.name,
+            )
+        except Exception:
+            logger.debug("api_subscribers_skipped", workflow=self.manifest.name)
 
     async def teardown(self) -> None:
         """Called when the platform shuts down. Override for cleanup."""
         pass
+
+    async def _on_hitl_resumed(self, msg) -> None:
+        """Handle HITL resume events from the API.
+
+        Filters for this workflow, then re-runs with the human-override
+        payload injected as trigger_data. The hitl_approved flag signals
+        the pipeline that human approval was granted.
+        """
+        payload = msg.payload if hasattr(msg, "payload") else msg
+        target_workflow = payload.get("workflow_id", "")
+
+        if target_workflow != self.manifest.name:
+            return  # Not for us — ignore
+
+        run_id = payload.get("run_id", "")
+        hitl_payload = payload.get("payload", {})
+
+        resume_data = {
+            **hitl_payload,
+            "hitl_approved": True,
+            "__resume_run_id__": run_id,
+        }
+
+        try:
+            await self.run(TriggerType.MANUAL, resume_data)
+        except Exception as exc:
+            logger.error(
+                "hitl_resume_failed",
+                workflow=self.manifest.name,
+                run_id=run_id,
+                error=str(exc),
+            )
+
+    async def _on_manual_trigger(self, msg) -> None:
+        """Handle manual workflow trigger events from the API.
+
+        Filters for this workflow, then runs with the provided payload.
+        """
+        payload = msg.payload if hasattr(msg, "payload") else msg
+        target_workflow = payload.get("workflow_id", "")
+
+        if target_workflow != self.manifest.name:
+            return  # Not for us — ignore
+
+        trigger_payload = payload.get("payload", {})
+
+        try:
+            await self.run(TriggerType.MANUAL, trigger_payload)
+        except Exception as exc:
+            logger.error(
+                "manual_trigger_failed",
+                workflow=self.manifest.name,
+                error=str(exc),
+            )
 
     # ── Trigger Matching ──────────────────────────────────────────────
 
@@ -420,6 +518,19 @@ class BaseWorkflow:
             self._runs.append(run)
             if len(self._runs) > 100:
                 self._runs = self._runs[-100:]
+
+            # Persist to durable backend (fire-and-forget — errors logged, not raised)
+            try:
+                from autopilot.core.run_log import get_run_log_service
+
+                await get_run_log_service().save_run(run)
+            except Exception as exc:
+                logger.warning(
+                    "run_log_persist_failed",
+                    run_id=run.id,
+                    workflow=self.manifest.name,
+                    error=str(exc),
+                )
 
             logger.info(
                 "workflow_run_completed",

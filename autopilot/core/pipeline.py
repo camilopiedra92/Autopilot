@@ -24,8 +24,6 @@ Usage:
     result = await pipeline.execute(ctx, initial_input={"email_body": raw})
 """
 
-from __future__ import annotations
-
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Union
@@ -302,7 +300,7 @@ class PipelineBuilder:
         self.name = name
         self._steps: list[BaseAgent] = []
 
-    def step(self, step_like: StepLike) -> PipelineBuilder:
+    def step(self, step_like: StepLike) -> "PipelineBuilder":
         """
         Add a step to the pipeline.
 
@@ -318,7 +316,7 @@ class PipelineBuilder:
         condition: Callable[[dict], bool],
         max_iterations: int = 3,
         name: str | None = None,
-    ) -> PipelineBuilder:
+    ) -> "PipelineBuilder":
         """
         Add a loop step that retries body until ``condition(state) → True``.
 
@@ -349,7 +347,7 @@ class PipelineBuilder:
         self,
         *branches: StepLike,
         name: str | None = None,
-    ) -> PipelineBuilder:
+    ) -> "PipelineBuilder":
         """
         Add a parallel step that runs all branches concurrently.
 

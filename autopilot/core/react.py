@@ -6,8 +6,6 @@ about its current state, choose tools to act on the environment, observe the
 results, and decide when its primary goal has been met.
 """
 
-from __future__ import annotations
-
 import time
 from typing import Any
 

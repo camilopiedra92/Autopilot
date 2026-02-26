@@ -16,8 +16,6 @@ Design:
   - Runs the existing ``create_telegram_notifier()`` LLM agent
 """
 
-from __future__ import annotations
-
 import structlog
 
 from autopilot.core.bus import AgentMessage

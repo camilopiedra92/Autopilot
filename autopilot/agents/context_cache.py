@@ -11,8 +11,6 @@ Env vars (12-Factor, global defaults when an agent opts in):
   - CONTEXT_CACHE_INTERVALS: Max uses before refresh (default: 10)
 """
 
-from __future__ import annotations
-
 import os
 import warnings
 

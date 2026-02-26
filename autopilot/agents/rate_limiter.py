@@ -28,13 +28,11 @@ Usage::
         allowed = await limiter.acquire("gemini-3-flash-preview")
 """
 
-from __future__ import annotations
-
 import asyncio
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 
 import structlog
 
@@ -164,7 +162,7 @@ class ModelRateLimiter:
 
 def create_model_rate_limit_callback(
     limiter: ModelRateLimiter,
-) -> callable:
+) -> Callable:
     """
     Create an ADK ``before_model_callback`` that applies rate limiting.
 
@@ -209,7 +207,7 @@ def create_model_rate_limit_callback(
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 _limiter: ModelRateLimiter | None = None
-_callback: callable | None = None
+_callback: Callable | None = None
 
 
 def get_model_rate_limiter() -> ModelRateLimiter | None:
@@ -232,7 +230,7 @@ def get_model_rate_limiter() -> ModelRateLimiter | None:
     return _limiter
 
 
-def get_model_rate_limit_callback() -> callable | None:
+def get_model_rate_limit_callback() -> Callable | None:
     """
     Get the global rate limit ``before_model_callback``.
 

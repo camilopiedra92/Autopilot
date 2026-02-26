@@ -4,8 +4,6 @@ Version is auto-derived from git tags by setuptools-scm.
 Never edit manually — tag a release with ``git tag vX.Y.Z`` instead.
 """
 
-from __future__ import annotations
-
 __all__ = ["VERSION", "APP_NAME"]
 
 APP_NAME = "AutoPilot"

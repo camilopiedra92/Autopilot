@@ -21,3 +21,7 @@ autopilot/_version.py
 # Sensitive OAuth files (explicit for clarity, also covered by *.json)
 credentials.json
 token.json
+
+# Dashboard frontend (external — tracked in its own repo)
+dashboard/node_modules/
+dashboard/dist/

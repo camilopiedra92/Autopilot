@@ -15,8 +15,6 @@ Backend selection via ``SESSION_BACKEND`` env var (12-Factor)::
     service = create_session_service("firestore")  # explicit override
 """
 
-from __future__ import annotations
-
 import logging
 import os
 

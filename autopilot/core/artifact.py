@@ -17,8 +17,6 @@ Usage::
     service = create_artifact_service()  # Reads ARTIFACT_BACKEND env var
 """
 
-from __future__ import annotations
-
 import os
 
 import structlog

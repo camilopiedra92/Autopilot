@@ -28,8 +28,6 @@ Usage::
     await bus.publish("transaction.created", {"amount": 50000}, sender="pipeline")
 """
 
-from __future__ import annotations
-
 import asyncio
 import fnmatch
 import os
@@ -99,7 +97,7 @@ class CloudPubSubEventBus(EventBusProtocol):
         self._ensure_topic()
 
     @classmethod
-    def from_env(cls) -> CloudPubSubEventBus:
+    def from_env(cls) -> "CloudPubSubEventBus":
         """Create from environment variables.
 
         Reads:

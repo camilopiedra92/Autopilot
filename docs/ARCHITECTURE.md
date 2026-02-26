@@ -8,8 +8,8 @@
 
 We build **World-Class, Edge-First, Agentic Systems**.
 
-- **Headless API Topology**: The system is a pure backend API (JSON/Events). There is **NO** internal frontend or dashboard. All interactions occur via strictly secured API endpoints (`X-API-Key`) or trusted Webhooks (Pub/Sub).
-  - **CORS disabled by default**: Since all clients are server-to-server (Pub/Sub, Cloud Scheduler, API keys), `CORSMiddleware` is **not mounted** unless `API_CORS_ORIGINS` is explicitly set. This prevents any browser origin from making cross-site requests to the API. Opt-in via `API_CORS_ORIGINS=https://admin.example.com`.
+- **Headless API Topology**: The system is a pure backend API (JSON/Events). There is **NO** internal frontend served by the platform. The Dashboard UI is an external web app (e.g., Vite/Vercel) that connects to the unified `/api/v1/` endpoints via `X-API-Key`. All observability, HITL, and management capabilities live under a single API surface — there is no separate \"dashboard\" prefix.
+  - **CORS disabled by default**: Since most clients are server-to-server (Pub/Sub, Cloud Scheduler), `CORSMiddleware` is **not mounted** unless `API_CORS_ORIGINS` is explicitly set. This prevents cross-site requests. Opt-in via `API_CORS_ORIGINS=https://admin.example.com` to allow the external Dashboard UI access.
 - **Edge-First**: Logic should run as close to the data/user as possible. We use lightweight, efficient patterns without monolithic state.
 - **Agentic**: The system is composed of autonomous, intelligent agents that interact via standard protocols.
 - **Google ADK Alignment**: We strictly follow the Google Agent Development Kit (ADK) patterns.
@@ -840,6 +840,41 @@ gs://{ARTIFACT_GCS_BUCKET}/{app_name}/default/{execution_id}/
 | `ctx.bus`                      | Access the global `EventBus` for A2A messaging                         |
 | `ctx.publish(topic)`           | Convenience → `bus.publish()` with auto-sender                         |
 | `ctx.subscribe(topic)`         | Convenience → `bus.subscribe()`                                        |
+| `WorkflowStateService`         | Cross-run KV store per workflow, wraps `ArtifactService`               |
+| `ctx.workflow_state`           | Convenience → `WorkflowStateService` scoped to current workflow        |
+
+#### Workflow State (Cross-Run KV Store)
+
+Workflows that need persistent state across pipeline executions (e.g., trade ledgers, risk counters, cumulative stats) use `WorkflowStateService` — a thin wrapper over `ArtifactService` that provides a clean dict-like API.
+
+**Why not `ctx.save_artifact()`?** Artifacts are scoped to `session_id=execution_id` (per-run). Workflow state must survive across runs, using a fixed `session_id="persistent"` namespace. `WorkflowStateService` abstracts this so workflows never touch raw artifact internals.
+
+```python
+from autopilot.core.workflow_state import WorkflowStateService
+
+# Standalone usage
+state = WorkflowStateService("polymarket_btc")
+data = await state.get("trade_stats")       # → dict | None
+await state.put("trade_stats", {"wins": 20})
+
+# From AgentContext (auto-scoped to current workflow)
+data = await ctx.workflow_state.get("risk_state")
+await ctx.workflow_state.put("risk_state", updated_state)
+```
+
+**Design characteristics:**
+
+- **Fire-and-forget** — mutations log errors but never raise (same as artifact persistence)
+- **JSON-native** — values are `dict`, serialized/deserialized automatically
+- **Backend-inherited** — uses the same `ARTIFACT_BACKEND` env var (no extra config)
+- **Versioned** — each `put()` creates a new artifact version (free audit trail in GCS)
+
+| Method        | Purpose                               |
+| ------------- | ------------------------------------- |
+| `get(key)`    | Load a JSON dict by key, or `None`    |
+| `put(key, d)` | Save a JSON dict under the given key  |
+| `delete(key)` | Remove a key (saves empty artifact)   |
+| `list_keys()` | List all state keys for this workflow |
 
 ### Scale-to-Zero and Long-Lived Subscriptions
 
@@ -1485,11 +1520,21 @@ skills:
 ## 5. Observability & Telemetry
 
 A true tier-1 agentic system must have perfect visibility into non-deterministic LLM behavior.
-The platform features **native OpenTelemetry (OTel)** tracing embedded deep within the execution engines.
+The platform features **native OpenTelemetry (OTel)** tracing embedded deep within the execution engines, paired with a robust **Dashboard API** for human oversight.
 
 - **`ADKRunner` & Engines**: Emits spans capturing execution hierarchical steps, timing, and errors.
 - **`BaseAgent`**: Emits spans (`agent.invoke`) tracking individual agent runs.
 - **`EventBus`**: Automatically injects trace correlation IDs when publishing messages, capturing concurrent subscriber deliveries and failure states.
+
+### Dashboard API & RunLogService
+
+The platform exposes read-only and intervention endpoints under `/api/v1/`:
+
+- **RunLogService**: Durable workflow run history backed by Firestore (prod) or In-Memory (dev). Records every execution, status, and duration.
+- **Topology & Context**: Endpoints to visualize pipeline graphs (`/workflows/{id}/pipeline`) and Agent Cards (`/workflows/{id}/agents`) from `.agent.yaml`.
+- **Live Event Stream**: Server-Sent Events (SSE) endpoint (`/events/stream`) streaming real-time `AgentMessage`s from the `EventBus`, designed with edge-safe 5-minute disconnects and cursor replay (`Last-Event-ID`).
+- **Human-in-the-Loop (HITL)**: Endpoints to list `PAUSED` runs pending human action (`/runs/pending-action`), and securely inject resume payloads.
+- **Platform Copilot**: A native ReAct meta-agent endpoint (`/copilot/ask`) equipped with read-only tools to analyze run history, failures, and latency on behalf of the user.
 
 ### Tracing — `setup_tracing()`
 
@@ -1565,6 +1610,10 @@ Structured, typed exceptions across all platform layers:
 | Bus       | `BusTimeoutError`         | ✅        | `BUS_TIMEOUT`          |
 | DSL       | `DSLValidationError`      | ❌        | `DSL_VALIDATION`       |
 | DSL       | `DSLResolutionError`      | ❌        | `DSL_RESOLUTION`       |
+| RunLog    | `RunLogError`             | ❌        | `RUN_LOG_ERROR`        |
+| Dashboard | `DashboardError`          | ❌        | `DASHBOARD_ERROR`      |
+| Dashboard | `RunNotFoundError`        | ❌        | `RUN_NOT_FOUND`        |
+| Dashboard | `RunNotPausedError`       | ❌        | `RUN_NOT_PAUSED`       |
 
 ## 7. Directory Structure
 

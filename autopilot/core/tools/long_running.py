@@ -38,8 +38,6 @@ Usage::
     status = tracker.get_status("op-123")
 """
 
-from __future__ import annotations
-
 import inspect
 import time
 import structlog

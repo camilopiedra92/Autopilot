@@ -8,8 +8,6 @@ Design principles:
   - Structured logging friendly: all errors serialize cleanly to JSON
 """
 
-from __future__ import annotations
-
 __all__ = [
     # Base
     "AutoPilotError",
@@ -59,6 +57,14 @@ __all__ = [
     "A2AError",
     "A2AWorkflowNotFoundError",
     "A2ATaskNotFoundError",
+    # Run Log Layer
+    "RunLogError",
+    # API Layer
+    "APIError",
+    "WorkflowNotFoundError",
+    "RunNotFoundError",
+    "RunNotPausedError",
+    "RunNotCancellableError",
 ]
 
 
@@ -72,7 +78,7 @@ class AutoPilotError(Exception):
 
     Attributes:
         retryable: If True, the caller should consider retrying the operation.
-        error_code: Machine-readable code for dashboards and alerting.
+        error_code: Machine-readable code for alerting and observability.
         http_status: Suggested HTTP status code for API responses.
     """
 
@@ -510,3 +516,55 @@ class A2ATaskNotFoundError(A2AError):
 
     error_code = "A2A_TASK_NOT_FOUND"
     http_status = 404
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  Run Log Layer — Errors from durable run history
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+class RunLogError(AutoPilotError):
+    """Base for all run log service errors."""
+
+    error_code = "RUN_LOG_ERROR"
+    http_status = 500
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  API Layer — Errors from API endpoints
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+class APIError(AutoPilotError):
+    """Base for all API layer errors."""
+
+    error_code = "API_ERROR"
+    http_status = 500
+
+
+class WorkflowNotFoundError(APIError):
+    """Requested workflow not found in registry."""
+
+    error_code = "WORKFLOW_NOT_FOUND"
+    http_status = 404
+
+
+class RunNotFoundError(APIError):
+    """Specific run ID not found in the run log."""
+
+    error_code = "RUN_NOT_FOUND"
+    http_status = 404
+
+
+class RunNotPausedError(APIError):
+    """Attempted to resume a run that is not in PAUSED state."""
+
+    error_code = "RUN_NOT_PAUSED"
+    http_status = 409  # Conflict — state precondition not met
+
+
+class RunNotCancellableError(APIError):
+    """Attempted to cancel a run that is not in a cancellable state (PENDING/RUNNING)."""
+
+    error_code = "RUN_NOT_CANCELLABLE"
+    http_status = 409  # Conflict — state precondition not met

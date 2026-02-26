@@ -6,8 +6,6 @@ to the AgentBus.  Provides a ``from_pipeline_state()`` factory to build
 the event from the ``push_to_ynab`` step's ``final_result_data`` output.
 """
 
-from __future__ import annotations
-
 from pydantic import BaseModel
 from typing import Any
 
@@ -42,7 +40,9 @@ class TransactionEvent(BaseModel):
     overspending_warning: str = ""
 
     @classmethod
-    def from_pipeline_state(cls, final_result_data: dict[str, Any]) -> TransactionEvent:
+    def from_pipeline_state(
+        cls, final_result_data: dict[str, Any]
+    ) -> "TransactionEvent":
         """
         Factory: build from the ``push_to_ynab`` step's output.
 

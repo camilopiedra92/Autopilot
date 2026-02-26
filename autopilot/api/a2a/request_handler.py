@@ -11,8 +11,6 @@ Message protocol:
     {"workflow": "workflow_id", ...rest_is_trigger_data}
 """
 
-from __future__ import annotations
-
 import json
 import structlog
 from collections import OrderedDict

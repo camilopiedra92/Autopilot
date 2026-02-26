@@ -12,8 +12,6 @@ Usage:
     await telegram.client.send_message(chat_id="123", text="Hello!")
 """
 
-from __future__ import annotations
-
 import os
 import time
 import structlog

@@ -119,12 +119,116 @@ async def lifespan(app: FastAPI):
     logger.info("platform_shutdown_complete")
 
 
+# ── OpenAPI Tag Metadata ─────────────────────────────────────────────
+# Groups endpoints in /docs and /redoc for developer navigation.
+OPENAPI_TAGS = [
+    {
+        "name": "Workflows",
+        "description": "Discover, inspect, and manage registered workflows. "
+        "Each workflow is a self-contained automation pipeline with its own "
+        "agents, triggers, and execution history.",
+    },
+    {
+        "name": "Runs",
+        "description": "Durable run history powered by `RunLogService`. "
+        "Supports cursor-based pagination, per-step artifact traces, and "
+        "aggregate stats (total, success rate).",
+    },
+    {
+        "name": "Events",
+        "description": "EventBus history and real-time SSE stream. "
+        "Subscribe to live platform events via Server-Sent Events with "
+        "automatic reconnection and `Last-Event-ID` replay.",
+    },
+    {
+        "name": "HITL",
+        "description": "Human-In-The-Loop controls. List paused runs awaiting "
+        "human action and resume them with custom payloads.",
+    },
+    {
+        "name": "Copilot",
+        "description": "Platform observability meta-agent. Ask natural language "
+        "questions about workflow failures, run history, and event timelines. "
+        "Powered by a ReAct reasoning loop with read-only tools.",
+    },
+    {
+        "name": "System",
+        "description": "Health checks, Prometheus metrics, and platform info.",
+    },
+    {
+        "name": "Webhooks",
+        "description": "Inbound event adapters for external triggers. "
+        "Thin adapters that publish typed events to the EventBus — "
+        "workflows subscribe and react independently.",
+    },
+    {
+        "name": "Gmail Watch",
+        "description": "Gmail push notification lifecycle management. "
+        "Renew, inspect, and stop Gmail API watches for event-driven workflows.",
+    },
+]
+
+API_DESCRIPTION = """\
+## Autopilot Headless API
+
+A **pure backend API** (JSON + SSE) for orchestrating multi-agent AI workflows.
+There is no internal frontend — the API is the product.
+
+### Authentication
+
+All `/api/v1/*` endpoints require the `X-API-Key` header:
+
+```
+X-API-Key: <your-api-key>
+```
+
+The key is validated against the `API_KEY_SECRET` environment variable using
+timing-safe comparison ([HMAC](https://docs.python.org/3/library/hmac.html)).
+
+### Base URL
+
+| Environment | Base URL |
+|---|---|
+| Local | `http://localhost:8080` |
+| Cloud Run | `https://<service>-<hash>.run.app` |
+
+### Error Format
+
+All errors return a structured JSON envelope:
+
+```json
+{
+  "error": {
+    "error_code": "WORKFLOW_NOT_FOUND",
+    "message": "Workflow 'xyz' not found",
+    "detail": "Available: ['bank_to_ynab', 'conversational_assistant']",
+    "retryable": false,
+    "http_status": 404
+  }
+}
+```
+
+Every error carries `retryable` (boolean) and `error_code` (machine-readable)
+for automated retry decisions.
+
+### Real-Time Events
+
+Connect to `/api/v1/events/stream` via SSE for live platform events.
+The stream supports `Last-Event-ID` replay and sends keepalive pings every 30s.
+Connections are intentionally closed after 5 minutes (Edge LB safety) —
+clients should auto-reconnect.
+"""
+
 # ── FastAPI App ───────────────────────────────────────────────────────
 app = FastAPI(
     title="AutoPilot — AI Workflow Platform",
-    description="Multi-workflow AI automation platform powered by Google ADK",
+    description=API_DESCRIPTION,
     version=VERSION,
     lifespan=lifespan,
+    openapi_tags=OPENAPI_TAGS,
+    license_info={"name": "Private", "identifier": "LicenseRef-Private"},
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 # ── CORS ─────────────────────────────────────────────────────────────
@@ -162,9 +266,15 @@ app.include_router(v1_router)
 
 
 # ── Middlewares ───────────────────────────────────────────
-from autopilot.api.middleware import otel_tracing_middleware
+from autopilot.api.middleware import (
+    otel_tracing_middleware,
+    rate_limit_middleware,
+    api_versioning_middleware,
+)
 
 app.add_middleware(BaseHTTPMiddleware, dispatch=otel_tracing_middleware)
+app.add_middleware(BaseHTTPMiddleware, dispatch=rate_limit_middleware)
+app.add_middleware(BaseHTTPMiddleware, dispatch=api_versioning_middleware)
 
 
 if __name__ == "__main__":

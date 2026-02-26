@@ -53,3 +53,4 @@ ruff.toml
 # ── Agent config (dev-only) ──────────────────────────────────────────
 .agent/
 .gemini/
+dashboard/

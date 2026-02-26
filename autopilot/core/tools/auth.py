@@ -36,8 +36,6 @@ Usage::
         manager.request_credential("ynab.create_transaction")
 """
 
-from __future__ import annotations
-
 import os
 import structlog
 from dataclasses import dataclass, field

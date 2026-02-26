@@ -42,8 +42,6 @@ Usage::
     agent = LlmAgent(tools=toolsets)
 """
 
-from __future__ import annotations
-
 import structlog
 from dataclasses import dataclass, field
 from typing import Any

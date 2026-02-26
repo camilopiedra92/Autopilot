@@ -10,8 +10,6 @@ Design decisions:
   - Each artifact includes metadata (node name, engine, duration_ms).
 """
 
-from __future__ import annotations
-
 import json
 from typing import Any
 

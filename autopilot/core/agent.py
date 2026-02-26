@@ -25,12 +25,11 @@ Usage:
         ...
 """
 
-from __future__ import annotations
-
 import abc
 import asyncio
 import inspect
 import time
+import typing
 from typing import Any, Callable, Generic, TypeVar
 
 import structlog
@@ -183,15 +182,25 @@ class FunctionalAgent(BaseAgent[dict, dict]):
         self._is_async = asyncio.iscoroutinefunction(func)
 
         # Cache parameter names and types for fast state unpacking and auto-hydration
+        # Use typing.get_type_hints() to resolve forward references from
+        # `from __future__ import annotations` (PEP 563) — inspect.signature()
+        # only returns raw strings in that case.
         sig = inspect.signature(func)
         self._params = {}
         self._has_var_keyword = False
+
+        try:
+            resolved_hints = typing.get_type_hints(func)
+        except Exception:
+            resolved_hints = {}
 
         for param_name, param in sig.parameters.items():
             if param.kind == inspect.Parameter.VAR_KEYWORD:
                 self._has_var_keyword = True
             else:
-                self._params[param_name] = param.annotation
+                self._params[param_name] = resolved_hints.get(
+                    param_name, param.annotation
+                )
 
     async def run(self, ctx: AgentContext, input: dict) -> dict:
         """Extract function args from state and execute."""

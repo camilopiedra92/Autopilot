@@ -92,7 +92,6 @@ tags:
 manifest.yaml is auto-loaded by BaseWorkflow.
 """
 
-from __future__ import annotations
 
 from typing import Any
 

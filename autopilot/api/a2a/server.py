@@ -6,8 +6,6 @@ Uses the official a2a-sdk's A2AFastAPIApplication to wire:
   - POST /                            → JSON-RPC (message/send, message/stream, tasks/get)
 """
 
-from __future__ import annotations
-
 import structlog
 from fastapi import FastAPI
 

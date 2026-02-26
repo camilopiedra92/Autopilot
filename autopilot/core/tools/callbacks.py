@@ -44,8 +44,6 @@ Note: This complements ADK's native callbacks. When tools run through ADK's
 tool invocations (including non-ADK pipeline tools).
 """
 
-from __future__ import annotations
-
 import time
 import structlog
 from typing import Any, Callable, Protocol, runtime_checkable

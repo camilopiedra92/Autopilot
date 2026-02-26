@@ -36,8 +36,6 @@ Design:
   - OTel tracing propagates through the bus's span hierarchy.
 """
 
-from __future__ import annotations
-
 import structlog
 from typing import Any
 

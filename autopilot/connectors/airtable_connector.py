@@ -10,8 +10,6 @@ Usage:
     records = await airtable.client.get_records("base_id", "table_id")
 """
 
-from __future__ import annotations
-
 import os
 import time
 import structlog

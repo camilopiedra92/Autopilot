@@ -12,8 +12,6 @@ Pricing is configurable via environment variables or a static lookup
 table for Gemini models.
 """
 
-from __future__ import annotations
-
 import contextvars
 import os
 from dataclasses import dataclass, field

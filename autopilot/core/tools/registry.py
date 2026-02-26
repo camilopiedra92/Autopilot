@@ -25,8 +25,6 @@ Usage::
     agent = LlmAgent(tools=get_tool_registry().to_adk_tools())
 """
 
-from __future__ import annotations
-
 import inspect
 import functools
 import structlog

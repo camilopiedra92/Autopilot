@@ -6,8 +6,6 @@ the Declarative DSL (Phase 6).  They carry zero side effects and
 require no external dependencies — perfect for tests and templates.
 """
 
-from __future__ import annotations
-
 
 def parse_input(raw_text: str = "") -> dict:
     """Parse raw input text into structured data."""

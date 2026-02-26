@@ -6,8 +6,6 @@ Each registered workflow becomes an A2A Skill, enabling external agents
 to discover and invoke specific Autopilot capabilities.
 """
 
-from __future__ import annotations
-
 import os
 
 from a2a.types import (

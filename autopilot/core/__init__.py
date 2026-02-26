@@ -73,6 +73,13 @@ from autopilot.core.dsl_schema import (
 )
 from autopilot.core.dsl_loader import load_workflow, load_workflow_from_dict
 from autopilot.core.cost import CostSnapshot, CostTracker, get_cost_tracker
+from autopilot.core.run_log import (
+    RunLogProtocol,
+    InMemoryRunLogService,
+    get_run_log_service,
+    reset_run_log_service,
+    create_run_log_service,
+)
 
 __all__ = [
     "AgentContext",
@@ -129,4 +136,10 @@ __all__ = [
     "CostSnapshot",
     "CostTracker",
     "get_cost_tracker",
+    # Run Log
+    "RunLogProtocol",
+    "InMemoryRunLogService",
+    "get_run_log_service",
+    "reset_run_log_service",
+    "create_run_log_service",
 ]

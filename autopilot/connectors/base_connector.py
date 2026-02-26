@@ -18,8 +18,6 @@ Usage:
             return await self._client.ping()
 """
 
-from __future__ import annotations
-
 import structlog
 from abc import ABC, abstractmethod
 
