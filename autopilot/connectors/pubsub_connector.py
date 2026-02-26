@@ -84,6 +84,12 @@ class PubSubConnector(BaseConnector):
         self._watch_expiration: int = 0
         self._resolved_label_ids: list[str] = []
         self._label_id_to_name: dict[str, str] = {}  # Reverse map for email enrichment
+        self._gmail_lock = (
+            asyncio.Lock()
+        )  # Serialize Gmail API calls (httplib2 not thread-safe)
+        self._processed_ids: set[str] = (
+            set()
+        )  # Dedup: message IDs already processed this instance
 
     @property
     def history_id(self) -> str | None:
@@ -348,11 +354,12 @@ class PubSubConnector(BaseConnector):
         Decodes the notification, fetches new messages via history.list(),
         and returns them in standard format.
 
-        Cold-start race fix: On cold start, ``_register_watch()`` sets
-        ``_history_id`` to the CURRENT Gmail historyId, which may be AHEAD
-        of the email that triggered this notification.  We compare the
-        notification's historyId with ours and use the lower value so we
-        never skip the triggering email.
+        Cold-start race fix (v2): On cold start, ``_register_watch()`` sets
+        ``_history_id`` to the CURRENT Gmail historyId, which is the SAME
+        or AHEAD of the email that triggered this notification.  Gmail's
+        history.list(startHistoryId=X) returns changes AFTER X, not AT X.
+        So we subtract 1 from the effective historyId to look back far enough.
+        If history still returns 0, we fall back to fetching recent unread.
         """
         try:
             encoded_data = pubsub_message.get("message", {}).get("data", "")
@@ -377,41 +384,87 @@ class PubSubConnector(BaseConnector):
             logger.warning("pubsub_no_history_id")
             return []
 
-        # ── Cold-start race condition fix ─────────────────────────────
+        # ── Cold-start race condition fix (v2) ────────────────────────
         # On cold start, _register_watch() obtains the CURRENT historyId
-        # which can be AHEAD of the email that triggered this notification.
-        # Use the MINIMUM of both to ensure we look back far enough.
+        # which is the SAME as (or ahead of) the triggering email's.
+        # Gmail history.list(startHistoryId=X) returns changes AFTER X.
+        # So we use min(notification, watch) - 1 to look back far enough.
         effective_history_id = self._history_id
-        if (
-            new_history_id
-            and new_history_id.isdigit()
-            and self._history_id.isdigit()
-            and int(new_history_id) < int(self._history_id)
-        ):
-            logger.warning(
-                "pubsub_cold_start_race_detected",
-                notification_history_id=new_history_id,
-                watch_history_id=self._history_id,
-                action="using notification historyId as lower bound",
-            )
-            effective_history_id = new_history_id
+        is_cold_start_race = False
+        if new_history_id and new_history_id.isdigit() and self._history_id.isdigit():
+            min_id = min(int(new_history_id), int(self._history_id))
+            # Subtract 1 to ensure we see the email AT this historyId
+            effective_history_id = str(max(1, min_id - 1))
+            if int(new_history_id) <= int(self._history_id):
+                is_cold_start_race = True
+                logger.warning(
+                    "pubsub_cold_start_race_detected",
+                    notification_history_id=new_history_id,
+                    watch_history_id=self._history_id,
+                    effective_history_id=effective_history_id,
+                    action="using min(notification, watch) - 1",
+                )
 
-        try:
-            messages = await self._get_new_messages(effective_history_id)
-            if new_history_id:
-                self._history_id = new_history_id
+        async with self._gmail_lock:
+            try:
+                messages = await self._get_new_messages(effective_history_id)
+                if new_history_id:
+                    self._history_id = new_history_id
 
-            logger.info(
-                "pubsub_messages_fetched",
-                count=len(messages),
-                new_checkpoint=self._history_id,
-            )
-            return messages
-        except Exception as e:
-            logger.error("pubsub_history_fetch_failed", error=str(e))
-            if new_history_id:
-                self._history_id = new_history_id
-            return []
+                # If history returned nothing on a cold-start race, use fallback
+                if not messages and is_cold_start_race:
+                    logger.warning(
+                        "pubsub_cold_start_zero_messages",
+                        effective_history_id=effective_history_id,
+                        action="falling back to recent unread fetch",
+                    )
+                    messages = await self._fallback_fetch_recent()
+
+                # ── Deduplication ─────────────────────────────────────
+                # When multiple Pub/Sub notifications arrive during the
+                # same cold-start burst, history.list() can return the
+                # same emails for both requests. Filter out already-seen IDs.
+                if messages:
+                    before_count = len(messages)
+                    messages = [
+                        m for m in messages if m.get("id") not in self._processed_ids
+                    ]
+                    new_ids = {m.get("id") for m in messages if m.get("id")}
+                    self._processed_ids.update(new_ids)
+                    # Cap the set to prevent unbounded growth
+                    if len(self._processed_ids) > 500:
+                        self._processed_ids = set(list(self._processed_ids)[-200:])
+                    if before_count != len(messages):
+                        logger.info(
+                            "pubsub_dedup_filtered",
+                            before=before_count,
+                            after=len(messages),
+                            duplicates_skipped=before_count - len(messages),
+                        )
+
+                logger.info(
+                    "pubsub_messages_fetched",
+                    count=len(messages),
+                    new_checkpoint=self._history_id,
+                    cold_start_race=is_cold_start_race,
+                )
+                return messages
+            except Exception as e:
+                logger.error("pubsub_history_fetch_failed", error=str(e))
+                if new_history_id:
+                    self._history_id = new_history_id
+                # On cold-start errors (like SSL issues), try fallback
+                if is_cold_start_race:
+                    logger.warning(
+                        "pubsub_cold_start_error_fallback",
+                        error=str(e),
+                        action="falling back to recent unread fetch",
+                    )
+                    try:
+                        return await self._fallback_fetch_recent()
+                    except Exception as fb_err:
+                        logger.error("pubsub_fallback_also_failed", error=str(fb_err))
+                return []
 
     async def _get_new_messages(self, start_history_id: str) -> list[dict]:
         """Fetch ALL new messages since the given history ID.
@@ -466,7 +519,17 @@ class PubSubConnector(BaseConnector):
         return emails
 
     def _fetch_history_records(self, start_history_id: str) -> list[dict]:
-        """Synchronous call to Gmail history.list() API."""
+        """Synchronous call to Gmail history.list() API.
+
+        Does NOT filter by label — the connector is a platform-level pipe
+        that fetches ALL changes. Each workflow's ``_matches_gmail_trigger()``
+        handles its own label filtering. This allows multiple workflows
+        with different Gmail labels to coexist correctly.
+
+        The Gmail ``watch()`` already limits Pub/Sub notifications to the
+        registered labels (INCLUDE behavior = OR logic), so this only
+        processes relevant changes.
+        """
         all_records = []
         page_token = None
 
@@ -478,12 +541,6 @@ class PubSubConnector(BaseConnector):
             }
             if page_token:
                 params["pageToken"] = page_token
-
-            # Optimization: Filter Gmail changes heavily by passing the target label.
-            # Gmail API accepts exactly one labelId string. Since our use case
-            # ensures we have at least one target label, pass the first one.
-            if self._resolved_label_ids:
-                params["labelId"] = self._resolved_label_ids[0]
 
             response = self._gmail.service.users().history().list(**params).execute()
 
@@ -536,18 +593,21 @@ class PubSubConnector(BaseConnector):
         }
 
     async def _fallback_fetch_recent(self) -> list[dict]:
-        """Fallback: fetch the latest unread messages when history.list() fails.
+        """Fallback: fetch the latest messages when history.list() fails.
 
         Used when the historyId is too old (expired) and the Gmail API
-        returns a 404.  Fetches up to 5 recent unread messages as a
-        last-resort recovery.
+        returns a 404, or when the cold-start race returns 0 messages.
+
+        Does NOT filter by label — same principle as ``_fetch_history_records``.
+        Each workflow's ``_matches_gmail_trigger()`` handles filtering.
+        We use a broad ``newer_than:1h`` query to limit scope.
         """
         try:
             results = await asyncio.to_thread(
                 lambda: (
                     self._gmail.service.users()
                     .messages()
-                    .list(userId="me", q="is:unread newer_than:1h", maxResults=5)
+                    .list(userId="me", q="newer_than:1h", maxResults=10)
                     .execute()
                 )
             )

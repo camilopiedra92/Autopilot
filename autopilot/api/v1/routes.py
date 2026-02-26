@@ -285,7 +285,7 @@ async def list_workflows() -> dict[str, Any]:
                 success_rate=round(successful / total * 100, 1) if total > 0 else 0.0,
                 last_run=info.last_run,
             )
-            workflows.append(dw.model_dump(mode="json"))
+            workflows.append(dw.model_dump(mode="json", exclude_none=True))
 
         return {"workflows": workflows, "total": len(workflows)}
 
@@ -311,9 +311,9 @@ async def get_workflow(workflow_id: str) -> dict[str, Any]:
         stats = await get_run_log_service().get_stats(workflow_id)
 
         return {
-            "manifest": wf.manifest.model_dump(mode="json"),
-            "pipeline": graph.model_dump(mode="json"),
-            "agents": [a.model_dump(mode="json") for a in agents],
+            "manifest": wf.manifest.model_dump(mode="json", exclude_none=True),
+            "pipeline": graph.model_dump(mode="json", exclude_none=True),
+            "agents": [a.model_dump(mode="json", exclude_none=True) for a in agents],
             "stats": stats,
         }
 
@@ -340,7 +340,7 @@ async def get_pipeline_graph(workflow_id: str) -> dict[str, Any]:
         wf = _get_workflow(workflow_id)
         pipeline_data = _parse_pipeline_yaml(wf)
         graph = _build_pipeline_graph(pipeline_data)
-        return graph.model_dump(mode="json")
+        return graph.model_dump(mode="json", exclude_none=True)
 
 
 @router.get(
@@ -364,7 +364,7 @@ async def get_workflow_agents(workflow_id: str) -> dict[str, Any]:
         wf = _get_workflow(workflow_id)
         agents = _load_agent_cards(wf)
         return {
-            "agents": [a.model_dump(mode="json") for a in agents],
+            "agents": [a.model_dump(mode="json", exclude_none=True) for a in agents],
             "total": len(agents),
         }
 
@@ -426,7 +426,7 @@ async def list_workflow_runs(
         stats = await run_log.get_stats(workflow_id)
         return {
             "workflow_id": workflow_id,
-            "runs": [r.model_dump(mode="json") for r in runs],
+            "runs": [r.model_dump(mode="json", exclude_none=True) for r in runs],
             "meta": {"next_cursor": next_cursor},
             "stats": stats,
         }
@@ -516,7 +516,7 @@ async def get_run_trace(workflow_id: str, run_id: str) -> dict[str, Any]:
             )
 
         trace_data = RunTrace(run=run, steps=steps)
-        return trace_data.model_dump(mode="json")
+        return trace_data.model_dump(mode="json", exclude_none=True)
 
 
 @router.get(
@@ -711,7 +711,7 @@ async def list_pending_runs() -> dict[str, Any]:
                 status=r.status,
                 trigger_type=r.trigger_type,
                 started_at=r.started_at,
-            ).model_dump(mode="json")
+            ).model_dump(mode="json", exclude_none=True)
             for r in paused_runs
         ]
 

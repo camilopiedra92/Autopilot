@@ -1,4 +1,5 @@
 name: assistant
+display_name: "Asistente Personal 💬"
 description: "Personal assistant agent that understands natural language commands and executes actions across Todoist, YNAB, and Telegram."
 model: gemini-2.0-flash-exp
 input_schema:
